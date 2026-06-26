@@ -1,0 +1,13 @@
+# Downloaded model files
+models/*.gguf
+models/**/*.gguf
+*.gguf
+
+# Build artifacts (in case llama.cpp is ever cloned here)
+build/
+*.o
+*.a
+*.dylib
+
+# OS
+.DS_Store
