@@ -3,6 +3,9 @@
 # Orchestrate the Codex Desktop app to use llama-server on port 8080
 # via opencodex proxy (https://github.com/lidge-jun/opencodex)
 # This script starts llama-server, starts opencodex proxy, configures Codex, then launches Codex Desktop.
+#
+# Default: backgrounds itself after launching Codex. Use --foreground to block
+# in the terminal (and auto-teardown when Codex closes).
 
 set -euo pipefail
 
@@ -13,6 +16,12 @@ LLAMA_PORT=8080
 PROXY_PORT=8082
 MODEL="unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M"
 CATALOG="${SCRIPT_DIR}/llama-server-models.json"
+
+# Parse flags
+FOREGROUND=false
+for arg in "$@"; do
+  [[ "$arg" == "--foreground" || "$arg" == "-f" ]] && FOREGROUND=true
+done
 
 # Colors for output
 RED='\033[0;31m'
@@ -80,6 +89,7 @@ start_llama_server() {
         return 1
     fi
     
+    # Run the model script (it backgrounds itself by default)
     nohup bash "${llama_script}" >/tmp/llama-server.log 2>&1 &
     local llama_pid=$!
     
@@ -89,7 +99,7 @@ start_llama_server() {
         return 1
     fi
     
-    # Save PID for cleanup
+    # Save PID for teardown
     echo "${llama_pid}" > /tmp/llama-server.pid
     log_info "llama-server started (PID: ${llama_pid})"
 }
@@ -117,7 +127,7 @@ start_opencodex_proxy() {
       "apiKey": "",
       "defaultModel": "${MODEL}",
       "modelContextWindows": {
-        "${MODEL}": 131072
+        "${MODEL}": 65536
       }
     }
   }
@@ -143,7 +153,7 @@ EOF
         return 1
     fi
     
-    # Save PID for cleanup
+    # Save PID for teardown
     echo "${proxy_pid}" > /tmp/opencodex.pid
     log_info "opencodex proxy started (PID: ${proxy_pid})"
     
@@ -235,7 +245,7 @@ EOF
     log_info "Codex configured successfully"
 }
 
-# Cleanup function
+# Cleanup function (only used in foreground mode)
 cleanup() {
     log_info "Cleaning up..."
     
@@ -264,8 +274,7 @@ cleanup() {
     log_info "Cleanup complete"
 }
 
-# Set trap to cleanup on exit
-trap cleanup EXIT INT TERM
+# ── Main execution ──────────────────────────────────────────────────────────
 
 # Check if Codex is already running
 if pgrep -x "Codex" >/dev/null 2>&1; then
@@ -274,7 +283,6 @@ if pgrep -x "Codex" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Main execution
 log_info "Starting local LLM setup for Codex..."
 
 # Step 1: Start llama-server
@@ -309,11 +317,23 @@ log_info "Proxy: http://localhost:${PROXY_PORT}/v1"
 
 open -a "Codex" || true
 
-# Wait for Codex to exit
-log_info "Waiting for Codex Desktop to close..."
-while pgrep -x "Codex" >/dev/null 2>&1; do
-    sleep 2
-done
+if [[ "$FOREGROUND" == "true" ]]; then
+    # Foreground mode: trap cleanup and block until Codex closes
+    trap cleanup EXIT INT TERM
+    
+    log_info "Running in foreground — waiting for Codex Desktop to close..."
+    log_info "Press Ctrl+C to stop services now."
+    
+    while pgrep -x "Codex" >/dev/null 2>&1; do
+        sleep 2
+    done
+    
+    log_info "Codex Desktop has closed. Cleaning up services..."
+else
+    # Background mode (default): detach and leave services running
+    log_info "Running in background. Services will keep running."
+    log_info "  To stop: ./run/teardown.sh"
+    log_info "  To start fresh: ./run/teardown.sh && ./run/codex.sh"
+fi
 
-log_info "Codex Desktop has closed."
 exit 0

@@ -205,9 +205,9 @@ setup_catalog() {
         {"effort": "xhigh", "description": "Maximum reasoning"}
       ],
       "default_reasoning_level": "medium",
-      "context_window": 131072,
-      "max_context_window": 131072,
-      "auto_compact_token_limit": 117964,
+      "context_window": 65536,
+      "max_context_window": 65536,
+      "auto_compact_token_limit": 58982,
       "supports_reasoning_summaries": true,
       "default_reasoning_summary": "none",
       "support_verbosity": true,
@@ -249,7 +249,7 @@ setup_opencodex_config() {
       "apiKey": "",
       "defaultModel": "${MODEL}",
       "modelContextWindows": {
-        "${MODEL}": 131072
+        "${MODEL}": 65536
       }
     }
   }
