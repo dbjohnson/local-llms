@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-brew upgrade llama.cpp
-exit
-
-# FOR THE MASOCHISTS:
-
 # Setup script for llama.cpp on macOS (Apple Silicon)
 # Builds with Metal GPU acceleration
+#
+# NOTE: The Homebrew bottle is often outdated (e.g. stable 7480) and lacks
+# newer flags like --spec-type. We build from source to stay current.
 
 set -euo pipefail
 
