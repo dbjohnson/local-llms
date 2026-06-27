@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Tear-down script: stop all local LLM services and restore original Codex config.
+# Tear-down script: stop all local LLM services and restore original configs.
 #
 # Usage:
-#   ./run/teardown.sh              # stop services + restore config
-#   ./run/teardown.sh --no-config  # stop services only, leave config as-is
-#   ./run/teardown.sh --config     # restore config only (don't kill anything)
+#   ./run/teardown.sh              # stop services + restore Codex + opencode configs
+#   ./run/teardown.sh --no-config  # stop services only, leave configs as-is
+#   ./run/teardown.sh --config     # restore configs only (don't stop services)
 #   ./run/teardown.sh --status     # show what's currently running
 
 set -euo pipefail
@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ── Constants ────────────────────────────────────────────────────────────────
 
 CODEX_CONFIG="${HOME}/.codex/config.toml"
+OPENCODE_CONFIG="${HOME}/.config/opencode/opencode.jsonc"
 
 # Known ports and their services
 declare -A SERVICE_PORTS
@@ -24,7 +25,13 @@ SERVICE_PORTS=(
 )
 
 # Known PID files
-PID_FILES=("/tmp/qwen3.6-27b.pid" "/tmp/llama-server.pid" "/tmp/opencodex.pid")
+PID_FILES=(
+  "/tmp/qwen3.6-27b.pid"
+  "/tmp/qwen3.6-35b-a3b.pid"
+  "/tmp/llama-server.pid"
+  "/tmp/llama-server-opencode.pid"
+  "/tmp/opencodex.pid"
+)
 
 # ── Colors ──────────────────────────────────────────────────────────────────
 
@@ -41,7 +48,6 @@ log_step()  { echo -e "${CYAN}[teardown]${NC} $1"; }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-# Find the PID listening on a given port
 find_pid_by_port() {
   local port="$1"
   if command -v lsof >/dev/null 2>&1; then
@@ -51,7 +57,6 @@ find_pid_by_port() {
   fi
 }
 
-# Kill a PID gracefully (SIGTERM), then force (SIGKILL) if needed
 kill_process() {
   local pid="$1"
   local name="$2"
@@ -64,14 +69,12 @@ kill_process() {
   log_info "Stopping ${name} (PID ${pid})..."
   kill "$pid" 2>/dev/null || true
 
-  # Wait up to 5 seconds for graceful shutdown
   local waited=0
   while kill -0 "$pid" 2>/dev/null && (( waited < 5 )); do
     sleep 1
     (( waited++ ))
   done
 
-  # Force kill if still alive
   if kill -0 "$pid" 2>/dev/null; then
     log_warn "${name} did not stop gracefully, sending SIGKILL..."
     kill -9 "$pid" 2>/dev/null || true
@@ -83,6 +86,29 @@ kill_process() {
   else
     log_error "Failed to stop ${name} (PID ${pid})."
   fi
+}
+
+# Restore a config file from its latest backup
+restore_config_file() {
+  local config_path="$1"
+  local label="$2"
+
+  if [[ ! -f "$config_path" ]]; then
+    log_info "${label} config not found at ${config_path}, skipping."
+    return 0
+  fi
+
+  local latest_backup
+  latest_backup=$(ls -t "${config_path}".backup.* 2>/dev/null | head -1 || echo "")
+
+  if [[ -z "$latest_backup" ]]; then
+    log_warn "No ${label} config backup found."
+    return 0
+  fi
+
+  cp "$latest_backup" "$config_path"
+  log_info "Restored ${label} config from ${latest_backup}"
+  rm -f "$latest_backup"
 }
 
 # ── Status ──────────────────────────────────────────────────────────────────
@@ -110,10 +136,9 @@ show_status() {
       local pid
       pid=$(cat "$pid_file" 2>/dev/null || echo "")
       if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        # Only report if not already found by port
         local already_found=false
-        for pids in $(find_pid_by_port 8080) $(find_pid_by_port 8082); do
-          [[ "$pids" == "$pid" ]] && already_found=true
+        for p in $(find_pid_by_port 8080) $(find_pid_by_port 8082); do
+          [[ "$p" == "$pid" ]] && already_found=true
         done
         if [[ "$already_found" == "false" ]]; then
           found=true
@@ -137,13 +162,17 @@ show_status() {
 
   # Check config backup status
   log_step "=== Config backups ==="
-  local latest_backup
-  latest_backup=$(ls -t "${CODEX_CONFIG}".backup.* 2>/dev/null | head -1 || echo "")
-  if [[ -n "$latest_backup" ]]; then
-    echo -e "  ${CYAN}●${NC} Latest backup: ${latest_backup}"
-  else
-    echo -e "  ${YELLOW}●${NC} No config backups found (nothing to restore)"
-  fi
+  for config_path in "${CODEX_CONFIG}" "${OPENCODE_CONFIG}"; do
+    local label
+    label=$(basename "$(dirname "$config_path")")
+    local latest_backup
+    latest_backup=$(ls -t "${config_path}".backup.* 2>/dev/null | head -1 || echo "")
+    if [[ -n "$latest_backup" ]]; then
+      echo -e "  ${CYAN}●${NC} ${label}: ${latest_backup}"
+    else
+      echo -e "  ${YELLOW}●${NC} ${label}: no backups"
+    fi
+  done
 }
 
 # ── Stop Services ───────────────────────────────────────────────────────────
@@ -171,7 +200,6 @@ stop_services() {
       local pid
       pid=$(cat "$pid_file" 2>/dev/null || echo "")
       if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        # Derive a name from the file
         local name
         name=$(basename "$pid_file" .pid)
         kill_process "$pid" "$name"
@@ -184,34 +212,20 @@ stop_services() {
   log_info "Service teardown complete."
 }
 
-# ── Restore Config ──────────────────────────────────────────────────────────
+# ── Restore Configs ─────────────────────────────────────────────────────────
 
-restore_config() {
-  log_step "=== Restoring Codex config ==="
+restore_configs() {
+  log_step "=== Restoring configs ==="
 
-  # Find the latest backup
-  local latest_backup
-  latest_backup=$(ls -t "${CODEX_CONFIG}".backup.* 2>/dev/null | head -1 || echo "")
-
-  if [[ -z "$latest_backup" ]]; then
-    log_warn "No config backup found at ${CODEX_CONFIG}.backup.*"
-    log_warn "Removing current config so Codex falls back to defaults."
-    if [[ -f "${CODEX_CONFIG}" ]]; then
-      rm -f "${CODEX_CONFIG}"
-      log_info "Removed ${CODEX_CONFIG}"
-    fi
-  else
-    cp "$latest_backup" "${CODEX_CONFIG}"
-    log_info "Restored config from ${latest_backup}"
-    rm -f "$latest_backup"
-    log_info "Removed backup (backup was consumed)."
-  fi
+  restore_config_file "${CODEX_CONFIG}" "Codex"
 
   # Clear stale model cache
   if [[ -f "${HOME}/.codex/models_cache.json" ]]; then
     rm -f "${HOME}/.codex/models_cache.json"
-    log_info "Cleared stale model cache."
+    log_info "Cleared stale Codex model cache."
   fi
+
+  restore_config_file "${OPENCODE_CONFIG}" "opencode"
 
   log_info "Config restoration complete."
 }
@@ -237,15 +251,15 @@ for arg in "$@"; do
     --help|-h)
       echo "Usage: ./run/teardown.sh [OPTIONS]"
       echo ""
-      echo "Stop local LLM services and restore original Codex configuration."
+      echo "Stop local LLM services and restore original configurations."
       echo ""
       echo "Options:"
       echo "  --status     Show running services and config backup status"
-      echo "  --no-config  Stop services but leave Codex config as-is"
-      echo "  --config     Restore config only (don't stop services)"
+      echo "  --no-config  Stop services but leave configs as-is"
+      echo "  --config     Restore configs only (don't stop services)"
       echo "  --help       Show this help message"
       echo ""
-      echo "Default (no flags): stop services AND restore config."
+      echo "Default (no flags): stop services AND restore configs."
       exit 0
       ;;
     *)
@@ -272,7 +286,7 @@ fi
 
 if [[ "$ACTION_CONFIG" == "true" ]]; then
   echo ""
-  restore_config
+  restore_configs
 fi
 
 echo ""

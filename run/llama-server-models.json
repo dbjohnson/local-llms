@@ -1,10 +1,10 @@
 {
-  "fetched_at": "2026-06-26T22:16:42Z",
+  "fetched_at": "2026-06-27T03:10:32Z",
   "client_version": "26.623.31921",
   "models": [
     {
-      "slug": "llama-local/unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M",
-      "display_name": "llama-local/unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M",
+      "slug": "llama-local/unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M",
+      "display_name": "llama-local/unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M",
       "description": "Routed via opencodex → llama-local (llamacpp).",
       "shell_type": "shell_command",
       "visibility": "list",

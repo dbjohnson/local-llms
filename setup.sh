@@ -15,7 +15,7 @@ BUN_DIR="${HOME}/.bun"
 CODEX_CONFIG="${HOME}/.codex/config.toml"
 OPENCODEX_CONFIG="${HOME}/.opencodex/config.json"
 CATALOG="${RUN_DIR}/llama-server-models.json"
-MODEL="unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M"
+MODEL="${MODEL:-unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M}"
 LLAMA_PORT=8080
 PROXY_PORT=8082
 

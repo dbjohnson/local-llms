@@ -14,7 +14,8 @@ CODEX_CONFIG="${HOME}/.codex/config.toml"
 OPENCODEX_CONFIG="${HOME}/.opencodex/config.json"
 LLAMA_PORT=8080
 PROXY_PORT=8082
-MODEL="unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M"
+MODEL="${MODEL:-unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M}"
+LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/qwen3.6-35b-a3b.sh}"
 CATALOG="${SCRIPT_DIR}/llama-server-models.json"
 
 # Parse flags
@@ -82,13 +83,13 @@ start_llama_server() {
     fi
     
     log_info "Starting llama-server on port ${LLAMA_PORT}..."
-    local llama_script="${SCRIPT_DIR}/qwen3.6-27b.sh"
-    
+    local llama_script="${LLAMA_SCRIPT}"
+
     if [[ ! -f "${llama_script}" ]]; then
         log_error "llama-server script not found: ${llama_script}"
         return 1
     fi
-    
+
     # Run the model script (it backgrounds itself by default)
     nohup bash "${llama_script}" >/tmp/llama-server.log 2>&1 &
     local llama_pid=$!
