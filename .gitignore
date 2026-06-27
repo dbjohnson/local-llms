@@ -1,6 +1,7 @@
 # Downloaded model files
 models/*.gguf
 models/**/*.gguf
+/run/llama-server-models.json
 *.gguf
 
 # Build artifacts (in case llama.cpp is ever cloned here)
