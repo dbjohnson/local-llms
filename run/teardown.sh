@@ -17,12 +17,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_CONFIG="${HOME}/.codex/config.toml"
 OPENCODE_CONFIG="${HOME}/.config/opencode/opencode.jsonc"
 
-# Known ports and their services
-declare -A SERVICE_PORTS
-SERVICE_PORTS=(
-  ["8080"]="llama-server"
-  ["8082"]="opencodex proxy"
-)
+# Known ports and their services (parallel arrays for bash 3 compatibility)
+SERVICES_PORTS="8080 8082"
+SERVICES_NAMES="llama-server 'opencodex proxy'"
 
 # Known PID files
 PID_FILES=(
@@ -43,7 +40,7 @@ NC='\033[0m'
 
 log_info()  { echo -e "${GREEN}[teardown]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[teardown]${NC} $1"; }
-log_error() { echo -e "${RED}[teardown]${NC} $1"; }
+log_error() { echo -e "${RED}[teardown]${NC} $1" >&2; }
 log_step()  { echo -e "${CYAN}[teardown]${NC} $1"; }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,6 +52,15 @@ find_pid_by_port() {
   elif command -v fuser >/dev/null 2>&1; then
     fuser "${port}/tcp" 2>/dev/null || true
   fi
+}
+
+get_service_name() {
+  local port="$1"
+  case "$port" in
+    8080) echo "llama-server" ;;
+    8082) echo "opencodex proxy" ;;
+    *)    echo "unknown" ;;
+  esac
 }
 
 kill_process() {
@@ -118,13 +124,15 @@ show_status() {
   local found=false
 
   # Check by port
-  for port in "${!SERVICE_PORTS[@]}"; do
+  local port
+  for port in $SERVICES_PORTS; do
     local pids
     pids=$(find_pid_by_port "$port")
     if [[ -n "$pids" ]]; then
       found=true
+      local name
+      name=$(get_service_name "$port")
       for pid in $pids; do
-        local name="${SERVICE_PORTS[$port]}"
         echo -e "  ${GREEN}●${NC} ${name} on port ${port} (PID ${pid})"
       done
     fi
@@ -181,15 +189,19 @@ stop_services() {
   log_step "=== Stopping services ==="
 
   # Stop by port (primary detection)
-  for port in "${!SERVICE_PORTS[@]}"; do
+  local port
+  for port in $SERVICES_PORTS; do
     local pids
     pids=$(find_pid_by_port "$port")
     if [[ -n "$pids" ]]; then
-      local name="${SERVICE_PORTS[$port]}"
+      local name
+      name=$(get_service_name "$port")
       for pid in $pids; do
         kill_process "$pid" "$name"
       done
     else
+      local name
+      name=$(get_service_name "$port")
       log_info "No ${name} found on port ${port}."
     fi
   done
@@ -232,12 +244,14 @@ restore_configs() {
 
 # ── Parse Arguments ─────────────────────────────────────────────────────────
 
+ACTION_STATUS=false
 ACTION_STOP=true
 ACTION_CONFIG=true
 
 for arg in "$@"; do
   case "$arg" in
     --status)
+      ACTION_STATUS=true
       ACTION_STOP=false
       ACTION_CONFIG=false
       ;;
@@ -278,8 +292,11 @@ echo "║   Local LLM Tear-Down                                       ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-if [[ "$ACTION_STOP" == "true" ]]; then
+if [[ "$ACTION_STATUS" == "true" ]] || [[ "$ACTION_STOP" == "true" ]]; then
   show_status
+fi
+
+if [[ "$ACTION_STOP" == "true" ]]; then
   echo ""
   stop_services
 fi
@@ -289,8 +306,12 @@ if [[ "$ACTION_CONFIG" == "true" ]]; then
   restore_configs
 fi
 
-echo ""
-log_info "╔══════════════════════════════════════════════════════════════╗"
-log_info "║   Tear-down complete. Run ./run/codex.sh to start again.    ║"
-log_info "╚══════════════════════════════════════════════════════════════╝"
-echo ""
+if [[ "$ACTION_STATUS" == "true" ]]; then
+  log_info "Status check complete."
+else
+  echo ""
+  log_info "╔══════════════════════════════════════════════════════════════╗"
+  log_info "║   Tear-down complete. Run ./run/codex.sh to start again.    ║"
+  log_info "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+fi

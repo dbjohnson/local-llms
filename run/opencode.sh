@@ -10,8 +10,9 @@
 #
 # Environment variables:
 #   MODEL        HuggingFace model ID (default: Qwen3.6-27B)
-#   LLAMA_SCRIPT Path to model server script (default: qwen3.6-27b.sh)
+#   LLAMA_SCRIPT Path to model server script (default: serve_model.sh)
 #   LLAMA_PORT   llama-server port (default: 8080)
+#   MODEL_CHOICE Model identifier (e.g. qwen3.6-27b)
 
 set -euo pipefail
 
@@ -22,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENCODE_CONFIG="${HOME}/.config/opencode/opencode.jsonc"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 MODEL="${MODEL:-unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M}"
-LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/qwen3.6-27b.sh}"
+LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/serve_model.sh}"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
 
@@ -71,8 +72,9 @@ if [[ "$ACTION_HELP" == "true" ]]; then
     echo ""
     echo "Environment variables:"
     echo "  MODEL          HuggingFace model ID (default: unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M)"
-    echo "  LLAMA_SCRIPT   Model server script (default: ./run/qwen3.6-27b.sh)"
+    echo "  LLAMA_SCRIPT   Model server script (default: ./run/serve_model.sh)"
     echo "  LLAMA_PORT     llama-server port (default: 8080)"
+    echo "  MODEL_CHOICE   Model identifier (default: qwen3.6-27b)"
     exit 0
 fi
 
@@ -96,12 +98,12 @@ start_llama_server() {
 
     if [[ "$ACTION_FOREGROUND" == "true" ]]; then
         log_info "llama" "Starting llama-server in foreground..."
-        PORT="${LLAMA_PORT}" bash "${LLAMA_SCRIPT}" --foreground
+        PORT="${LLAMA_PORT}" bash "${LLAMA_SCRIPT}" "${MODEL_CHOICE:-qwen3.6-27b}" --foreground
         return 0
     fi
 
     log_info "llama" "Starting llama-server on port ${LLAMA_PORT}..."
-    PORT="${LLAMA_PORT}" nohup bash "${LLAMA_SCRIPT}" >/tmp/llama-server-opencode.log 2>&1 &
+    PORT="${LLAMA_PORT}" nohup bash "${LLAMA_SCRIPT}" "${MODEL_CHOICE:-qwen3.6-27b}" >/tmp/llama-server-opencode.log 2>&1 &
     local llama_pid=$!
 
     if ! wait_for_port "${LLAMA_PORT}" "llama-server" 60; then

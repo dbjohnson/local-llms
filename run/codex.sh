@@ -9,10 +9,11 @@
 #   ./run/codex.sh --help              # show usage
 #
 # Environment variables:
-#   MODEL        HuggingFace model ID (default: Qwen3.6-35B-A3B)
-#   LLAMA_SCRIPT Path to model server script (default: qwen3.6-35b-a3b.sh)
-#   LLAMA_PORT   llama-server port (default: 8080)
-#   PROXY_PORT   opencodex proxy port (default: 8082)
+#   MODEL          HuggingFace model ID (default: Qwen3.6-35B-A3B)
+#   LLAMA_SCRIPT   Path to model server script (default: serve_model.sh)
+#   LLAMA_PORT     llama-server port (default: 8080)
+#   PROXY_PORT     opencodex proxy port (default: 8082)
+#   MODEL_CHOICE   Model identifier (e.g. qwen3.6-27b)
 
 set -euo pipefail
 
@@ -24,7 +25,7 @@ OPENCODEX_CONFIG="${HOME}/.opencodex/config.json"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 PROXY_PORT="${PROXY_PORT:-8082}"
 MODEL="${MODEL:-unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M}"
-LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/qwen3.6-35b-a3b.sh}"
+LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/serve_model.sh}"
 CATALOG="${SCRIPT_DIR}/llama-server-models.json"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
@@ -58,14 +59,15 @@ if [[ "$ACTION_HELP" == "true" ]]; then
     echo ""
     echo "Environment variables:"
     echo "  MODEL          HuggingFace model ID (default: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M)"
-    echo "  LLAMA_SCRIPT   Model server script (default: ./run/qwen3.6-35b-a3b.sh)"
+    echo "  LLAMA_SCRIPT   Model server script (default: ./run/serve_model.sh)"
     echo "  LLAMA_PORT     llama-server port (default: 8080)"
     echo "  PROXY_PORT     opencodex proxy port (default: 8082)"
+    echo "  MODEL_CHOICE   Model identifier (default: qwen3.6-35b-a3b)"
     echo ""
     echo "Examples:"
     echo "  $0                                          # use default 35B-A3B"
-    echo "  MODEL=unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M \\"
-    echo "  LLAMA_SCRIPT=./run/qwen3.6-27b.sh $0       # use 27B model"
+    echo "  MODEL_CHOICE=qwen3.6-27b $0                 # use 27B model"
+    echo "  MODEL=my-org/my-model:Q4_K_M $0             # custom model"
     exit 0
 fi
 
@@ -101,9 +103,14 @@ start_llama_server() {
     log_info "llama" "Starting llama-server on port ${LLAMA_PORT}..."
     log_info "llama" "Using script: ${LLAMA_SCRIPT}"
 
-    # The model script writes its own PID to a known file.
-    # We start it via nohup and wait for port readiness.
-    nohup bash "${LLAMA_SCRIPT}" >/tmp/llama-server.log 2>&1 &
+    # Build the nohup command string for eval
+    local cmd="nohup bash ${LLAMA_SCRIPT}"
+    if [[ -n "${MODEL_CHOICE:-}" ]]; then
+        cmd="${cmd} ${MODEL_CHOICE}"
+    fi
+    cmd="${cmd} >/tmp/llama-server.log 2>&1 &"
+
+    eval "${cmd}"
     local wrapper_pid=$!
 
     # Wait for the port to be ready
