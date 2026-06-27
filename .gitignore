@@ -3,6 +3,8 @@ models/*.gguf
 models/**/*.gguf
 /run/llama-server-models.json
 *.gguf
+.webui*
+open-webui-native
 
 # Build artifacts (in case llama.cpp is ever cloned here)
 build/
