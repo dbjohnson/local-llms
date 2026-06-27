@@ -11,6 +11,7 @@
 #   PORT          Listen port (default: 8080)
 #   CONTEXT       Context size (default: 65536)
 #   MODEL_CHOICE  Model identifier (e.g. qwen3.6-27b) — overrides positional arg
+#   CPU_ONLY      Set to "1" to force CPU-only mode (no GPU offloading)
 
 set -euo pipefail
 
@@ -51,11 +52,87 @@ model_desc() {
     esac
 }
 
+# ── Hardware auto-detection ────────────────────────────────────────────────
+
+# Detect RAM in GB (works on both M1 and M4)
+detect_ram_gb() {
+    local mem_bytes
+    mem_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+    echo $(( mem_bytes / 1073741824 ))
+}
+
+# Detect if we have 64GB+ (enables --moe-load-all-experts for MoE models)
+has_64gb_or_more() {
+    local ram_gb
+    ram_gb=$(detect_ram_gb)
+    (( ram_gb >= 64 ))
+}
+
+# Detect if GPU offloading is possible (Metal on Apple Silicon)
+can_gpu_offload() {
+    [[ "${CPU_ONLY:-}" != "1" ]] && [[ -n "$(command -v llama-server 2>/dev/null)" ]]
+}
+
 # ── Resolve model choice ───────────────────────────────────────────────────
 
+# Check for flags before consuming positional arg
+FOREGROUND=false
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h)
+            echo "Usage: $0 [MODEL] [OPTIONS]"
+            echo ""
+            echo "Launch a local LLM via llama-server."
+            echo ""
+            echo "Models:"
+            echo "  qwen3.6-35b-a3b   Qwen3.6-35B-A3B (MoE) [default]"
+            echo "  qwen3.6-27b       Qwen3.6-27B with MTP speculative decoding"
+            echo ""
+            echo "Options:"
+            echo "  --foreground   Run in the foreground (don't background)"
+            echo "  --help         Show this help message"
+            echo ""
+            echo "Environment variables:"
+            echo "  MODEL          HuggingFace model ID (e.g. org/model:quant)"
+            echo "  PORT           Listen port (default: 8080)"
+            echo "  CONTEXT        Context size (default: 65536)"
+            echo "  MODEL_CHOICE   Model identifier (e.g. qwen3.6-27b)"
+            echo "  CPU_ONLY       Set to 1 for CPU-only mode (no GPU offloading)"
+            echo ""
+            echo "Examples:"
+            echo "  $0                                          # 35B-A3B (default)"
+            echo "  $0 qwen3.6-27b                              # 27B with MTP"
+            echo "  $0 --foreground                             # debug mode"
+            echo "  MODEL=my-org/my-model:Q5_K_M $0             # custom model"
+            echo "  PORT=9090 CONTEXT=32768 $0 qwen3.6-27b     # custom port/context"
+            echo "  MODEL_CHOICE=qwen3.6-27b $0                 # env var override"
+            echo "  CPU_ONLY=1 $0                               # CPU-only mode"
+            exit 0
+            ;;
+        --foreground|-f)
+            FOREGROUND=true
+            ;;
+        --*)
+            log_error "serve_model" "Unknown option: $arg"
+            echo "Use --help for usage." >&2
+            exit 1
+            ;;
+    esac
+done
+
 # Priority: positional arg > MODEL_CHOICE env var > default (qwen3.6-35b-a3b)
-_MODEL_CHOICE="${1:-}"
-shift 2>/dev/null || true
+# Skip over flags to find the model name
+_MODEL_CHOICE=""
+for arg in "$@"; do
+    case "$arg" in
+        --*|-*) ;; # skip flags
+        *)
+            if [[ -z "$_MODEL_CHOICE" ]]; then
+                _MODEL_CHOICE="$arg"
+            fi
+            ;;
+    esac
+done
 
 if [[ -n "$_MODEL_CHOICE" ]]; then
     MODEL_CHOICE="$_MODEL_CHOICE"
@@ -77,55 +154,6 @@ PID_FILE="$(model_pid "$MODEL_CHOICE")"
 LOG_FILE="$(model_log "$MODEL_CHOICE")"
 DESC="$(model_desc "$MODEL_CHOICE")"
 
-# ── Parse arguments ────────────────────────────────────────────────────────
-
-FOREGROUND=false
-ACTION_HELP=false
-for arg in "$@"; do
-    case "$arg" in
-        --foreground|-f)
-            FOREGROUND=true
-            ;;
-        --help|-h)
-            ACTION_HELP=true
-            ;;
-        *)
-            log_error "serve_model" "Unknown option: $arg"
-            echo "Use --help for usage." >&2
-            exit 1
-            ;;
-    esac
-done
-
-if [[ "$ACTION_HELP" == "true" ]]; then
-    echo "Usage: $0 [MODEL] [OPTIONS]"
-    echo ""
-    echo "Launch a local LLM via llama-server."
-    echo ""
-    echo "Models:"
-    echo "  qwen3.6-35b-a3b   Qwen3.6-35B-A3B (MoE) [default]"
-    echo "  qwen3.6-27b       Qwen3.6-27B with MTP speculative decoding"
-    echo ""
-    echo "Options:"
-    echo "  --foreground   Run in the foreground (don't background)"
-    echo "  --help         Show this help message"
-    echo ""
-    echo "Environment variables:"
-    echo "  MODEL          HuggingFace model ID (e.g. org/model:quant)"
-    echo "  PORT           Listen port (default: 8080)"
-    echo "  CONTEXT        Context size (default: 65536)"
-    echo "  MODEL_CHOICE   Model identifier (e.g. qwen3.6-27b)"
-    echo ""
-    echo "Examples:"
-    echo "  $0                                          # 35B-A3B (default)"
-    echo "  $0 qwen3.6-27b                              # 27B with MTP"
-    echo "  $0 --foreground                             # debug mode"
-    echo "  MODEL=my-org/my-model:Q5_K_M $0             # custom model"
-    echo "  PORT=9090 CONTEXT=32768 $0 qwen3.6-27b     # custom port/context"
-    echo "  MODEL_CHOICE=qwen3.6-27b $0                 # env var override"
-    exit 0
-fi
-
 # ── Validate ───────────────────────────────────────────────────────────────
 
 validate_port "$PORT" || exit 1
@@ -133,10 +161,14 @@ validate_model "$MODEL"
 
 # ── Check llama-server binary ──────────────────────────────────────────────
 
-if ! command -v llama-server >/dev/null 2>&1; then
-    log_error "serve_model" "llama-server not found."
-    log_error "serve_model" "Run setup/llama-cpp.sh or ./setup.sh first."
-    exit 1
+if ! can_gpu_offload; then
+    if [[ "${CPU_ONLY:-}" == "1" ]]; then
+        log_warn "serve_model" "CPU-only mode requested. Running without GPU offloading."
+    else
+        log_error "serve_model" "llama-server not found."
+        log_error "serve_model" "Run setup/llama-cpp.sh or ./setup.sh first."
+        exit 1
+    fi
 fi
 
 # ── MTP check (only needed for 27b) ────────────────────────────────────────
@@ -150,12 +182,36 @@ if [[ "$MODEL_CHOICE" == "qwen3.6-27b" ]]; then
     fi
 fi
 
+# ── Determine hardware-aware configuration ─────────────────────────────────
+
+RAM_GB=$(detect_ram_gb)
+GPU_OFFLOAD="true"
+MTP_DRAFT_N_MAX=2
+
+if can_gpu_offload; then
+    GPU_OFFLOAD="true"
+else
+    GPU_OFFLOAD="false"
+fi
+
+# MTP model: use more aggressive draft length on 64GB+ (more headroom for draft model)
+if [[ "$MODEL_CHOICE" == "qwen3.6-27b" ]]; then
+    if has_64gb_or_more && [[ "$GPU_OFFLOAD" == "true" ]]; then
+        MTP_DRAFT_N_MAX=4
+    fi
+fi
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 log_info "serve_model" "Starting ${DESC}..."
 log_info "serve_model" "Model: ${MODEL}"
 log_info "serve_model" "Port: ${PORT}"
 log_info "serve_model" "Context: ${CONTEXT_SIZE}"
+log_info "serve_model" "Hardware: ${RAM_GB}GB RAM, GPU offload=${GPU_OFFLOAD}"
+
+if [[ "$MTP_DRAFT_N_MAX" -gt 2 ]]; then
+    log_info "serve_model" "MTP: using aggressive draft (n=${MTP_DRAFT_N_MAX} for 64GB+)"
+fi
 
 rotate_log "${LOG_FILE}" 10240
 
@@ -164,9 +220,28 @@ CMD=(llama-server \
     -c "${CONTEXT_SIZE}" \
     --port "${PORT}")
 
-if [[ "$MODEL_CHOICE" == "qwen3.6-27b" ]]; then
-    CMD+=(--spec-type draft-mtp --spec-draft-n-max 2)
+# GPU offloading: put all layers on GPU
+if [[ "$GPU_OFFLOAD" == "true" ]]; then
+    CMD+=(-ngl 999)
 fi
+
+# Threading: auto-detect (maps to performance cores only on Apple Silicon)
+CMD+=(-t 0)
+
+# Memory pinning: prevent swap thrash (critical for large MoE models)
+if [[ "$GPU_OFFLOAD" == "true" ]]; then
+    CMD+=(--mlock)
+fi
+
+# MTP speculative decoding
+if [[ "$MODEL_CHOICE" == "qwen3.6-27b" ]]; then
+    CMD+=(--spec-type draft-mtp \
+          --spec-draft-n-max "${MTP_DRAFT_N_MAX}" \
+          --spec-penalty 0.5)
+fi
+
+# Reduce logging overhead during inference
+CMD+=(--log-disable)
 
 if [[ "$FOREGROUND" == "true" ]]; then
     log_info "serve_model" "Running in foreground..."
