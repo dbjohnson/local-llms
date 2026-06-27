@@ -23,8 +23,6 @@ SERVICES_NAMES="llama-server 'opencodex proxy'"
 
 # Known PID files
 PID_FILES=(
-  "/tmp/qwen3.6-27b.pid"
-  "/tmp/qwen3.6-35b-a3b.pid"
   "/tmp/llama-server.pid"
   "/tmp/llama-server-opencode.pid"
   "/tmp/opencodex.pid"

@@ -27,6 +27,9 @@ Scripts for running LLMs locally using llama.cpp and other engines.
 # For opencode:
 ./run/opencode.sh --start   # start llama-server + configure opencode
 ./run/teardown.sh           # stop services and restore configs
+
+# For DeepSeek-R1-Distill-Qwen-32B:
+MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh
 ```
 
 ## Model Selection
@@ -42,6 +45,9 @@ The unified `serve_model.sh` script handles model selection via a positional arg
 
 # Or use MODEL_CHOICE env var
 MODEL_CHOICE=qwen3.6-27b ./run/serve_model.sh
+
+# DeepSeek-R1-Distill-Qwen-32B
+MODEL_CHOICE=deepseek-r1-32b ./run/serve_model.sh
 ```
 
 ### Available Models
@@ -50,6 +56,7 @@ MODEL_CHOICE=qwen3.6-27b ./run/serve_model.sh
 |---|---|---|---|---|
 | `qwen3.6-35b-a3b` | Qwen3.6-35B-A3B | MoE | ~20 GB | Agentic coding, tool use, function calling |
 | `qwen3.6-27b` | Qwen3.6-27B (MTP) | Dense | ~16 GB | Consistent throughput, general coding |
+| `deepseek-r1-32b` | DeepSeek-R1-Distill-Qwen-32B | Dense | ~19 GB | Reasoning, math, complex tasks |
 
 ### Overriding the Model
 
@@ -67,39 +74,42 @@ MODEL=my-org/my-model:Q5_K_M ./run/codex.sh
 
 # Custom model + model choice for serve_model.sh
 MODEL_CHOICE=qwen3.6-27b MODEL=my-org/my-model:Q4_K_M ./run/codex.sh
+
+# Use DeepSeek-R1-Distill-Qwen-32B with Codex
+MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh
 ```
 
 ## Monitoring Logs
 
-Each model server writes its output to `/tmp/<model>.log` and its PID to `/tmp/<model>.pid`:
+All model servers share the same log and PID files (only one runs at a time):
 
-| Model | Log file | PID file |
-|---|---|---|
-| Qwen3.6-35B-A3B | `/tmp/qwen3.6-35b-a3b.log` | `/tmp/qwen3.6-35b-a3b.pid` |
-| Qwen3.6-27B | `/tmp/qwen3.6-27b.log` | `/tmp/qwen3.6-27b.pid` |
+| File | Path |
+|---|---|
+| Log | `/tmp/llama-server.log` |
+| PID | `/tmp/llama-server.pid` |
 
 ### Examples
 
 ```bash
-# Tail the log of a specific model
-tail -f /tmp/qwen3.6-35b-a3b.log
-tail -f /tmp/qwen3.6-27b.log
+# Tail the log
+tail -f /tmp/llama-server.log
 
-# Show PID + tail log in one go
-cat /tmp/qwen3.6-35b-a3b.pid && tail -f /tmp/qwen3.6-35b-a3b.log
+# Show PID
+cat /tmp/llama-server.pid
 
 # Watch all local LLM logs at once
-tail -f /tmp/qwen3.6-27b.log /tmp/qwen3.6-35b-a3b.log /tmp/llama-server.log /tmp/llama-server-opencode.log /tmp/opencodex.log
+tail -f /tmp/llama-server.log /tmp/llama-server-opencode.log /tmp/opencodex.log
 
 # Filter for tokens / errors
-tail -f /tmp/qwen3.6-35b-a3b.log | grep -E "(slot|prompt|token|error|load)"
+tail -f /tmp/llama-server.log | grep -E "(slot|prompt|token|error|load)"
 ```
+
 
 ## Scripts
 
 ### `run/serve_model.sh`
 
-Unified model launcher for all local LLMs. Supports Qwen3.6-35B-A3B (MoE) and Qwen3.6-27B (MTP).
+Unified model launcher for all local LLMs. Supports Qwen3.6-35B-A3B (MoE), Qwen3.6-27B (MTP), and DeepSeek-R1-Distill-Qwen-32B.
 
 - **Default (background):** Backgrounds the server, writes PID to model-specific file.
 - **`--foreground`:** Runs in place (useful for debugging).
@@ -107,6 +117,7 @@ Unified model launcher for all local LLMs. Supports Qwen3.6-35B-A3B (MoE) and Qw
 Arguments:
 - No argument → Qwen3.6-35B-A3B (default)
 - `qwen3.6-27b` → Qwen3.6-27B with MTP speculative decoding
+- `deepseek-r1-32b` → DeepSeek-R1-Distill-Qwen-32B
 
 Environment variables:
 - `MODEL` — HuggingFace model ID (e.g. `org/model:quant`)
@@ -164,7 +175,7 @@ Stops all running local LLM services and optionally restores original configs.
 
 Detects services by:
 - **Port scanning** (8080 = llama-server, 8082 = opencodex)
-- **PID files** (`/tmp/qwen3.6-27b.pid`, `/tmp/qwen3.6-35b-a3b.pid`, `/tmp/llama-server.pid`, `/tmp/llama-server-opencode.pid`, `/tmp/opencodex.pid`)
+- **PID files** (`/tmp/llama-server.pid`, `/tmp/llama-server-opencode.pid`, `/tmp/opencodex.pid`)
 
 ### `run/openwebui.sh`
 
@@ -200,4 +211,11 @@ opencode -m llama-local/unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M
 
 # Check what's running
 ./run/teardown.sh --status
+
+# Codex with DeepSeek-R1-Distill-Qwen-32B
+MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh
+
+# opencode with DeepSeek-R1-Distill-Qwen-32B
+MODEL_CHOICE=deepseek-r1-32b MODEL=unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF:Q4_K_M ./run/opencode.sh --start
+opencode -m llama-local/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF:Q4_K_M
 ```
