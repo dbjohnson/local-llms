@@ -1,122 +1,137 @@
 #!/usr/bin/env bash
-
-# Orchestrate the Codex Desktop app to use llama-server on port 8080
-# via opencodex proxy (https://github.com/lidge-jun/opencodex)
-# This script starts llama-server, starts opencodex proxy, configures Codex, then launches Codex Desktop.
+# Orchestrate Codex Desktop to use llama-server on port 8080 via opencodex proxy.
 #
-# Default: backgrounds itself after launching Codex. Use --foreground to block
-# in the terminal (and auto-teardown when Codex closes).
+# Starts llama-server → opencodex proxy → configures Codex → launches Codex.
+#
+# Usage:
+#   ./run/codex.sh                     # background (default)
+#   ./run/codex.sh --foreground        # block in terminal, auto-teardown on exit
+#   ./run/codex.sh --help              # show usage
+#
+# Environment variables:
+#   MODEL        HuggingFace model ID (default: Qwen3.6-35B-A3B)
+#   LLAMA_SCRIPT Path to model server script (default: qwen3.6-35b-a3b.sh)
+#   LLAMA_PORT   llama-server port (default: 8080)
+#   PROXY_PORT   opencodex proxy port (default: 8082)
 
 set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_CONFIG="${HOME}/.codex/config.toml"
 OPENCODEX_CONFIG="${HOME}/.opencodex/config.json"
-LLAMA_PORT=8080
-PROXY_PORT=8082
+LLAMA_PORT="${LLAMA_PORT:-8080}"
+PROXY_PORT="${PROXY_PORT:-8082}"
 MODEL="${MODEL:-unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M}"
 LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/qwen3.6-35b-a3b.sh}"
 CATALOG="${SCRIPT_DIR}/llama-server-models.json"
 
-# Parse flags
+# ── Parse arguments ────────────────────────────────────────────────────────
+
 FOREGROUND=false
+ACTION_HELP=false
 for arg in "$@"; do
-  [[ "$arg" == "--foreground" || "$arg" == "-f" ]] && FOREGROUND=true
+    case "$arg" in
+        --foreground|-f)
+            FOREGROUND=true
+            ;;
+        --help|-h)
+            ACTION_HELP=true
+            ;;
+        *)
+            log_error "codex" "Unknown option: $arg"
+            echo "Use --help for usage." >&2
+            exit 1
+            ;;
+    esac
 done
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+if [[ "$ACTION_HELP" == "true" ]]; then
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Orchestrate Codex Desktop with a local llama-server + opencodex proxy."
+    echo ""
+    echo "Options:"
+    echo "  --foreground   Block in terminal; auto-teardown when Codex closes"
+    echo "  --help         Show this help message"
+    echo ""
+    echo "Environment variables:"
+    echo "  MODEL          HuggingFace model ID (default: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M)"
+    echo "  LLAMA_SCRIPT   Model server script (default: ./run/qwen3.6-35b-a3b.sh)"
+    echo "  LLAMA_PORT     llama-server port (default: 8080)"
+    echo "  PROXY_PORT     opencodex proxy port (default: 8082)"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                          # use default 35B-A3B"
+    echo "  MODEL=unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M \\"
+    echo "  LLAMA_SCRIPT=./run/qwen3.6-27b.sh $0       # use 27B model"
+    exit 0
+fi
 
-log_info() {
-    echo -e "${GREEN}[codex]${NC} $1"
-}
+# ── Validate ───────────────────────────────────────────────────────────────
 
-log_warn() {
-    echo -e "${YELLOW}[codex]${NC} $1"
-}
+validate_port "$LLAMA_PORT" || exit 1
+validate_port "$PROXY_PORT" || exit 1
+validate_model "$MODEL"
 
-log_error() {
-    echo -e "${RED}[codex]${NC} $1"
-}
+# ── Check if Codex is already running ──────────────────────────────────────
 
-# Check if a process is listening on a port
-is_port_listening() {
-    local port="$1"
-    if command -v lsof >/dev/null 2>&1; then
-        lsof -i ":${port}" -sTCP:LISTEN >/dev/null 2>&1
-    elif command -v nc >/dev/null 2>&1; then
-        nc -z localhost "${port}" >/dev/null 2>&1
-    else
-        # Fallback: try curl
-        curl -sf "http://localhost:${port}/health" >/dev/null 2>&1 || \
-        curl -sf "http://localhost:${port}/healthz" >/dev/null 2>&1
-    fi
-}
+if pgrep -x "Codex" >/dev/null 2>&1; then
+    log_warn "codex" "Codex Desktop is already running."
+    log_warn "codex" "Please close it first, then run this script again."
+    exit 1
+fi
 
-# Wait for a port to be ready
-wait_for_port() {
-    local port="$1"
-    local name="$2"
-    local max_attempts="${3:-30}"
-    
-    log_info "Waiting for ${name} on port ${port}..."
-    for i in $(seq 1 "${max_attempts}"); do
-        if is_port_listening "${port}"; then
-            log_info "${name} is ready on port ${port}"
-            return 0
-        fi
-        sleep 1
-    done
-    
-    log_error "${name} failed to start on port ${port}"
-    return 1
-}
+log_info "codex" "Starting local LLM setup for Codex..."
 
-# Start llama-server if not running
+# ── Step 1: Start llama-server ─────────────────────────────────────────────
+
 start_llama_server() {
     if is_port_listening "${LLAMA_PORT}"; then
-        log_info "llama-server already running on port ${LLAMA_PORT}"
+        log_info "llama" "Already running on port ${LLAMA_PORT}"
         return 0
     fi
-    
-    log_info "Starting llama-server on port ${LLAMA_PORT}..."
-    local llama_script="${LLAMA_SCRIPT}"
 
-    if [[ ! -f "${llama_script}" ]]; then
-        log_error "llama-server script not found: ${llama_script}"
+    if [[ ! -f "${LLAMA_SCRIPT}" ]]; then
+        log_error "llama" "Model script not found: ${LLAMA_SCRIPT}"
         return 1
     fi
 
-    # Run the model script (it backgrounds itself by default)
-    nohup bash "${llama_script}" >/tmp/llama-server.log 2>&1 &
-    local llama_pid=$!
-    
+    log_info "llama" "Starting llama-server on port ${LLAMA_PORT}..."
+    log_info "llama" "Using script: ${LLAMA_SCRIPT}"
+
+    # The model script writes its own PID to a known file.
+    # We start it via nohup and wait for port readiness.
+    nohup bash "${LLAMA_SCRIPT}" >/tmp/llama-server.log 2>&1 &
+    local wrapper_pid=$!
+
+    # Wait for the port to be ready
     if ! wait_for_port "${LLAMA_PORT}" "llama-server" 60; then
-        log_error "Failed to start llama-server"
-        kill "${llama_pid}" 2>/dev/null || true
+        log_error "llama" "Failed to start llama-server"
+        kill "${wrapper_pid}" 2>/dev/null || true
         return 1
     fi
-    
-    # Save PID for teardown
-    echo "${llama_pid}" > /tmp/llama-server.pid
-    log_info "llama-server started (PID: ${llama_pid})"
+
+    # Save a reference PID for teardown (the wrapper process).
+    # The model script also writes its own PID to /tmp/qwen3.6-*.pid.
+    echo "${wrapper_pid}" > /tmp/llama-server.pid
+    log_info "llama" "Started (wrapper PID: ${wrapper_pid})"
 }
 
-# Start opencodex proxy if not running
+# ── Step 2: Start opencodex proxy ──────────────────────────────────────────
+
 start_opencodex_proxy() {
     if is_port_listening "${PROXY_PORT}"; then
-        log_info "opencodex proxy already running on port ${PROXY_PORT}"
+        log_info "proxy" "Already running on port ${PROXY_PORT}"
         return 0
     fi
-    
-    log_info "Starting opencodex proxy on port ${PROXY_PORT}..."
-    
+
+    log_info "proxy" "Starting opencodex proxy on port ${PROXY_PORT}..."
+
     # Ensure opencodex config exists
     mkdir -p "$(dirname "${OPENCODEX_CONFIG}")"
-    cat > "${OPENCODEX_CONFIG}" <<EOF
+    cat > "${OPENCODEX_CONFIG}" <<OCXCFG_EOF
 {
   "port": ${PROXY_PORT},
   "defaultProvider": "llama-local",
@@ -133,94 +148,49 @@ start_opencodex_proxy() {
     }
   }
 }
-EOF
-    
+OCXCFG_EOF
+
     # Ensure bun is in PATH
     if [[ -d "${HOME}/.bun/bin" ]]; then
         export PATH="${HOME}/.bun/bin:${PATH}"
     fi
-    
+
     if ! command -v ocx >/dev/null 2>&1; then
-        log_error "ocx command not found. Please install opencodex: npm install -g @bitkyc08/opencodex"
+        log_error "proxy" "ocx command not found. Please install opencodex:"
+        log_error "proxy" "  npm install -g @bitkyc08/opencodex"
         return 1
     fi
-    
+
     nohup ocx start --port "${PROXY_PORT}" >/tmp/opencodex.log 2>&1 &
     local proxy_pid=$!
-    
+
     if ! wait_for_port "${PROXY_PORT}" "opencodex proxy" 30; then
-        log_error "Failed to start opencodex proxy"
+        log_error "proxy" "Failed to start opencodex proxy"
         kill "${proxy_pid}" 2>/dev/null || true
         return 1
     fi
-    
-    # Save PID for teardown
+
     echo "${proxy_pid}" > /tmp/opencodex.pid
-    log_info "opencodex proxy started (PID: ${proxy_pid})"
-    
-    # ocx start auto-syncs models which may overwrite the catalog
-    # We will rewrite the catalog in configure_codex() after this
+    log_info "proxy" "Started (PID: ${proxy_pid})"
+
+    # ocx start auto-syncs models which may overwrite the catalog.
+    # We rewrite it below after the sync completes.
 }
 
-# Configure Codex to use the proxy
+# ── Step 3: Configure Codex ────────────────────────────────────────────────
+
 configure_codex() {
-    log_info "Configuring Codex to use local model..."
-    
-    # Always write model catalog to ensure it's not empty
-    log_info "Writing model catalog..."
-    cat > "${CATALOG}" <<EOF
-{
-  "fetched_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "client_version": "26.623.31921",
-  "models": [
-    {
-      "slug": "llama-local/${MODEL}",
-      "display_name": "llama-local/${MODEL}",
-      "description": "Routed via opencodex → llama-local (llamacpp).",
-      "shell_type": "shell_command",
-      "visibility": "list",
-      "supported_in_api": true,
-      "priority": 5,
-      "base_instructions": "You are a helpful coding assistant.",
-      "web_search_tool_type": "text_and_image",
-      "supports_search_tool": true,
-      "supported_reasoning_levels": [
-        {"effort": "low", "description": "Fast responses"},
-        {"effort": "medium", "description": "Balanced"},
-        {"effort": "high", "description": "Deep reasoning"},
-        {"effort": "xhigh", "description": "Maximum reasoning"}
-      ],
-      "default_reasoning_level": "medium",
-      "context_window": 131072,
-      "max_context_window": 131072,
-      "auto_compact_token_limit": 117964,
-      "supports_reasoning_summaries": true,
-      "default_reasoning_summary": "none",
-      "support_verbosity": true,
-      "default_verbosity": "low",
-      "apply_patch_tool_type": "freeform",
-      "truncation_policy": {
-        "mode": "tokens",
-        "limit": 10000
-      },
-      "supports_parallel_tool_calls": true,
-      "supports_image_detail_original": false,
-      "experimental_supported_tools": [],
-      "input_modalities": ["text"],
-      "effective_context_window_percent": 95,
-      "comp_hash": "opencodex"
-    }
-  ]
-}
-EOF
-    
-    # Backup existing config
-    if [[ -f "${CODEX_CONFIG}" ]]; then
-        cp "${CODEX_CONFIG}" "${CODEX_CONFIG}.backup.$(date +%s)"
-    fi
-    
+    log_info "config" "Configuring Codex to use local model..."
+
+    # Always write model catalog
+    log_info "config" "Writing model catalog..."
+    generate_catalog "${CATALOG}" "${MODEL}" 131072
+
+    # Backup existing config (uses nanosecond timestamp to avoid collisions)
+    backup_config "${CODEX_CONFIG}" "config"
+
     # Write new config
-    cat > "${CODEX_CONFIG}" <<EOF
+    cat > "${CODEX_CONFIG}" <<CODEXCFG_EOF
 model = "llama-local/${MODEL}"
 model_provider = "opencodex"
 model_catalog_json = "${CATALOG}"
@@ -235,106 +205,95 @@ requires_openai_auth = true
 
 [features]
 js_repl = false
-EOF
-    
+CODEXCFG_EOF
+
     # Clear stale model cache
     if [[ -f "${HOME}/.codex/models_cache.json" ]]; then
         rm -f "${HOME}/.codex/models_cache.json"
-        log_info "Cleared stale model cache"
+        log_info "config" "Cleared stale model cache"
     fi
-    
-    log_info "Codex configured successfully"
+
+    log_info "config" "Codex configured successfully"
 }
 
-# Cleanup function (only used in foreground mode)
+# ── Cleanup (foreground mode only) ─────────────────────────────────────────
+
 cleanup() {
-    log_info "Cleaning up..."
-    
+    log_info "cleanup" "Cleaning up..."
+
     # Kill opencodex proxy
     if [[ -f /tmp/opencodex.pid ]]; then
         local proxy_pid
         proxy_pid=$(cat /tmp/opencodex.pid)
         if kill -0 "${proxy_pid}" 2>/dev/null; then
-            log_info "Stopping opencodex proxy (PID: ${proxy_pid})..."
-            kill "${proxy_pid}" 2>/dev/null || true
-            rm -f /tmp/opencodex.pid
+            kill_process "${proxy_pid}" "opencodex proxy"
         fi
+        rm -f /tmp/opencodex.pid
     fi
-    
+
     # Kill llama-server
     if [[ -f /tmp/llama-server.pid ]]; then
         local llama_pid
         llama_pid=$(cat /tmp/llama-server.pid)
         if kill -0 "${llama_pid}" 2>/dev/null; then
-            log_info "Stopping llama-server (PID: ${llama_pid})..."
-            kill "${llama_pid}" 2>/dev/null || true
-            rm -f /tmp/llama-server.pid
+            kill_process "${llama_pid}" "llama-server"
         fi
+        rm -f /tmp/llama-server.pid
     fi
-    
-    log_info "Cleanup complete"
+
+    log_info "cleanup" "Done"
 }
 
-# ── Main execution ──────────────────────────────────────────────────────────
-
-# Check if Codex is already running
-if pgrep -x "Codex" >/dev/null 2>&1; then
-    log_warn "Codex Desktop is already running."
-    log_warn "Please close it first, then run this script again."
-    exit 1
-fi
-
-log_info "Starting local LLM setup for Codex..."
+# ── Main execution ─────────────────────────────────────────────────────────
 
 # Step 1: Start llama-server
 if ! start_llama_server; then
-    log_error "Failed to start llama-server"
+    log_error "main" "Failed to start llama-server"
     exit 1
 fi
 
 # Step 2: Start opencodex proxy
 if ! start_opencodex_proxy; then
-    log_error "Failed to start opencodex proxy"
+    log_error "main" "Failed to start opencodex proxy"
     exit 1
 fi
 
 # Wait for ocx to finish auto-sync (which may overwrite the catalog)
-log_info "Waiting for opencodex to finish setup..."
+log_info "main" "Waiting for opencodex to finish setup..."
 sleep 5
 
-# Step 3: Configure Codex
+# Step 3: Configure Codex (rewrites catalog after ocx sync)
 configure_codex
 
 # Step 4: Verify catalog is not empty (ocx sync may have overwritten it)
-if ! grep -q '"models":\s*\[' "${CATALOG}" 2>/dev/null || grep -q '"models":\s*\[\s*\]' "${CATALOG}" 2>/dev/null; then
-    log_warn "Catalog was overwritten by ocx sync, rewriting..."
+if ! grep -q '"models":' "${CATALOG}" 2>/dev/null || grep -q '"models":\s*\[\s*\]' "${CATALOG}" 2>/dev/null; then
+    log_warn "main" "Catalog was overwritten by ocx sync, rewriting..."
     configure_codex
 fi
 
 # Step 5: Launch Codex Desktop
-log_info "Launching Codex Desktop..."
-log_info "Model: ${MODEL}"
-log_info "Proxy: http://localhost:${PROXY_PORT}/v1"
+log_info "main" "Launching Codex Desktop..."
+log_info "main" "Model: ${MODEL}"
+log_info "main" "Proxy: http://localhost:${PROXY_PORT}/v1"
 
 open -a "Codex" || true
 
 if [[ "$FOREGROUND" == "true" ]]; then
-    # Foreground mode: trap cleanup and block until Codex closes
     trap cleanup EXIT INT TERM
-    
-    log_info "Running in foreground — waiting for Codex Desktop to close..."
-    log_info "Press Ctrl+C to stop services now."
-    
+
+    log_info "main" "Running in foreground — waiting for Codex Desktop to close..."
+    log_info "main" "Press Ctrl+C to stop services now."
+
     while pgrep -x "Codex" >/dev/null 2>&1; do
         sleep 2
     done
-    
-    log_info "Codex Desktop has closed. Cleaning up services..."
+
+    log_info "main" "Codex Desktop has closed. Cleaning up services..."
+    cleanup
 else
-    # Background mode (default): detach and leave services running
-    log_info "Running in background. Services will keep running."
-    log_info "  To stop: ./run/teardown.sh"
-    log_info "  To start fresh: ./run/teardown.sh && ./run/codex.sh"
+    log_info "main" "Running in background. Services will keep running."
+    log_info "main" "  To stop: ./run/teardown.sh"
+    log_info "main" "  To start fresh: ./run/teardown.sh && ./run/codex.sh"
 fi
 
 exit 0

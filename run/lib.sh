@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# lib.sh — Shared library for all local-llms run scripts
-# Source this file at the top of your script:
-#   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# lib.sh — Shared library for all local-llms run scripts.
 #
-# Provides:
-#   - TTY-aware colors (graceful in pipes/redirects)
-#   - Logging functions (log_info, log_warn, log_error, log_step)
-#   - Validation helpers (validate_port, validate_model, check_disk_space)
-#   - Catalog generation (generate_catalog)
-#   - Log rotation (rotate_log)
-#   - Port helpers (is_port_listening, wait_for_port)
-#   - Brew prefix detection (get_brew_prefix)
+# Source at the top of your script:
+#   source "$(cd "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+#
+# Logging API (all use tag-based format: log_<level> "tag" "message"):
+#   log_info  "setup"  "Everything is ready ✓"
+#   log_warn  "setup"  "PATH missing /opt/homebrew/bin"
+#   log_error "setup"  "bun installation failed"
+#   log_step  "setup"  "=== Step 1: llama.cpp ==="
+#
+# Provides: colors, logging, port helpers, model helpers,
+#           disk checks, log rotation, catalog generation,
+#           brew detection, process helpers, config helpers,
+#           banner, bash version check.
 
 # ── TTY detection ──────────────────────────────────────────────────────────
 
@@ -40,10 +43,42 @@ fi
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
+# All logging functions use tag-based format.
 log_info()  { echo -e "${GREEN}[$1]${NC} $2"; }
 log_warn()  { echo -e "${YELLOW}[$1]${NC} $2"; }
 log_error() { echo -e "${RED}[$1]${NC} $2" >&2; }
 log_step()  { echo -e "${BLUE}[$1]${NC} $2"; }
+
+# ── Bash version check ──────────────────────────────────────────────────────
+
+# Ensures bash >= 4.3 (needed for associative arrays, etc.).
+# Call this early in scripts that use bash-specific features.
+check_bash_version() {
+    local major="${BASH_VERSINFO[0]:-3}"
+    local minor="${BASH_VERSINFO[1]:-2}"
+    if (( major < 4 || (major == 4 && minor < 3) )); then
+        log_error "bash" "Requires bash >= 4.3, found $BASH_VERSION."
+        log_error "bash" "Install via: brew install bash"
+        log_error "bash" "Then run this script with: /opt/homebrew/bin/bash <script>"
+        exit 1
+    fi
+}
+
+# ── Banner ──────────────────────────────────────────────────────────────────
+
+print_banner() {
+    local title="${1:-Local LLM}"
+    local width=60
+    local border
+    border=$(printf '%*s' "$width" '' | tr ' ' '═')
+    local padded
+    padded=$(printf "%-${width}s" "  $title  " | tr ' ' '═')
+    echo ""
+    echo "╔${border}╗"
+    echo "║${padded}║"
+    echo "╚${border}╝"
+    echo ""
+}
 
 # ── Validation ──────────────────────────────────────────────────────────────
 
@@ -63,7 +98,6 @@ validate_model() {
     if [[ ! "$model" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9._-]+$ ]]; then
         log_error "validate" "Unusual model ID format: ${model}"
         log_warn "validate" "Expected format: <org>/<model-name>:<quant-tag>"
-        # Warn but don't fail — some valid IDs may not match this regex
     fi
 }
 
@@ -101,12 +135,11 @@ generate_catalog() {
     local context_window="${3:-131072}"
     local auto_compact
 
-    # Calculate auto_compact as ~90% of context window
     auto_compact=$(( context_window * 90 / 100 ))
 
     mkdir -p "$(dirname "$catalog_path")"
 
-    cat > "${catalog_path}" <<EOF
+    cat > "${catalog_path}" <<CATALOG_EOF
 {
   "fetched_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "client_version": "26.623.31921",
@@ -150,13 +183,11 @@ generate_catalog() {
     }
   ]
 }
-EOF
+CATALOG_EOF
 }
 
 # ── Log rotation ────────────────────────────────────────────────────────────
 
-# Rotate a log file if it exceeds max_size_kb (default 10MB).
-# Usage: rotate_log <log_path> [max_size_kb]
 rotate_log() {
     local log_file="$1"
     local max_size_kb="${2:-10240}"
@@ -214,8 +245,96 @@ wait_for_port() {
 # ── Brew prefix detection ──────────────────────────────────────────────────
 
 get_brew_prefix() {
-    # Returns /opt/homebrew on Apple Silicon, /usr/local on Intel, or empty
     local prefix
     prefix="$(brew --prefix 2>/dev/null)" || true
     echo "${prefix:-/opt/homebrew}"
+}
+
+# ── Process helpers ────────────────────────────────────────────────────────
+
+# Find PID listening on a port. Returns empty string if none.
+find_pid_by_port() {
+    local port="$1"
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -t -i ":${port}" -sTCP:LISTEN 2>/dev/null || true
+    elif command -v fuser >/dev/null 2>&1; then
+        fuser "${port}/tcp" 2>/dev/null || true
+    fi
+}
+
+# Kill a process gracefully (SIGTERM → SIGKILL after 5s).
+kill_process() {
+    local pid="$1"
+    local name="$2"
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        log_info "$name" "Process (PID ${pid}) is not running, skipping."
+        return 0
+    fi
+
+    log_info "$name" "Stopping ${name} (PID ${pid})..."
+    kill "$pid" 2>/dev/null || true
+
+    local attempt=0
+    while kill -0 "$pid" 2>/dev/null && (( attempt < 5 )); do
+        sleep 1
+        (( attempt++ ))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        log_warn "$name" "Did not stop gracefully, sending SIGKILL..."
+        kill -9 "$pid" 2>/dev/null || true
+        sleep 1
+    fi
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        log_info "$name" "Stopped."
+    else
+        log_error "$name" "Failed to stop (PID ${pid})."
+    fi
+}
+
+# ── Config helpers ──────────────────────────────────────────────────────────
+
+# Return the latest backup for a config file, or empty string.
+latest_backup() {
+    local config_path="$1"
+    ls -t "${config_path}".backup.* 2>/dev/null | head -1 || true
+}
+
+# Restore a config file from its latest backup.
+restore_config_file() {
+    local config_path="$1"
+    local label="$2"
+
+    if [[ ! -f "$config_path" ]]; then
+        log_info "$label" "Config not found at ${config_path}, skipping."
+        return 0
+    fi
+
+    local backup
+    backup=$(latest_backup "$config_path")
+
+    if [[ -z "$backup" ]]; then
+        log_warn "$label" "No backup found."
+        return 0
+    fi
+
+    cp "$backup" "$config_path"
+    log_info "$label" "Restored from ${backup}"
+    rm -f "$backup"
+}
+
+# Create a timestamped backup of a config file. Uses nanoseconds to avoid collisions.
+backup_config() {
+    local config_path="$1"
+    local label="$2"
+
+    if [[ ! -f "$config_path" ]]; then
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$config_path")"
+    cp "$config_path" "${config_path}.backup.$(date +%s%N)"
+    log_info "$label" "Backed up config"
 }
