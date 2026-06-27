@@ -9,8 +9,10 @@ Scripts for running LLMs locally using llama.cpp and other engines.
 
 ## Structure
 
-- `setup/` - Installation and setup scripts
+- `setup.sh` — One-time root-level setup script (install dependencies, configure everything)
+- `setup/` — Additional setup scripts (e.g. `llama-cpp.sh` to build llama.cpp from source)
 - `run/` - Model-specific run scripts, orchestration, and teardown
+- `run/openwebui.sh` — Configure Open WebUI to use a local llama-server
 
 ## Quick Start
 
@@ -141,6 +143,9 @@ Environment variables:
 - `LLAMA_PORT` — llama-server port (default: `8080`)
 - `MODEL_CHOICE` — model identifier for `serve_model.sh`
 
+> **Note:** When using `--start` or `--foreground`, opencode.sh defaults to `qwen3.6-27b` for the server model.
+> The `MODEL` env var controls the model ID registered in opencode's config and should match the running server.
+
 After running, launch opencode with:
 ```bash
 opencode -m llama-local/unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M
@@ -160,6 +165,17 @@ Stops all running local LLM services and optionally restores original configs.
 Detects services by:
 - **Port scanning** (8080 = llama-server, 8082 = opencodex)
 - **PID files** (`/tmp/qwen3.6-27b.pid`, `/tmp/qwen3.6-35b-a3b.pid`, `/tmp/llama-server.pid`, `/tmp/llama-server-opencode.pid`, `/tmp/opencodex.pid`)
+
+### `run/openwebui.sh`
+
+Configures [Open WebUI](https://github.com/open-webui/open-webui) to use llama-server as a local provider.
+
+- **Default (background):** Starts llama-server and configures Open WebUI settings.
+- **`--foreground`:** Runs llama-server in the foreground.
+
+Environment variables:
+- `MODEL` — HuggingFace model ID (default: `unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M`)
+- `LLAMA_PORT` — llama-server port (default: `8080`)
 
 ## Workflows
 
