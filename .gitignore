@@ -1,7 +1,7 @@
 # Downloaded model files
 models/*.gguf
 models/**/*.gguf
-/run/llama-server-models.json
+run/llama-server-models.json
 *.gguf
 .webui*
 open-webui-native
