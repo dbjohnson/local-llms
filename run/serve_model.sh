@@ -9,9 +9,11 @@
 # Environment variables:
 #   MODEL         HuggingFace model ID with quant tag (default depends on model choice)
 #   PORT          Listen port (default: 8080)
-#   CONTEXT       Context size (default: 65536)
+#   CONTEXT       Context size (default: auto-adjusted)
 #   MODEL_CHOICE  Model identifier (e.g. qwen3.6-27b) — overrides positional arg
 #   CPU_ONLY      Set to "1" to force CPU-only mode (no GPU offloading)
+#
+# Context auto-adjusts: 32768 on ≤32GB, 65536 on ≥64GB.
 
 set -euo pipefail
 
@@ -95,7 +97,7 @@ for arg in "$@"; do
             echo "Environment variables:"
             echo "  MODEL          HuggingFace model ID (e.g. org/model:quant)"
             echo "  PORT           Listen port (default: 8080)"
-            echo "  CONTEXT        Context size (default: 65536)"
+            echo "  CONTEXT        Context size (default: auto)"
             echo "  MODEL_CHOICE   Model identifier (e.g. qwen3.6-27b)"
             echo "  CPU_ONLY       Set to 1 for CPU-only mode (no GPU offloading)"
             echo ""
@@ -194,6 +196,15 @@ else
     GPU_OFFLOAD="false"
 fi
 
+# Adaptive context size based on available RAM
+# KV cache is O(context × model_dim). On 32GB, 65K context can leave
+# barely any headroom for system processes. On 64GB there's plenty.
+if (( RAM_GB >= 64 )); then
+    CONTEXT_SIZE=65536
+else
+    CONTEXT_SIZE=32768
+fi
+
 # MTP model: use more aggressive draft length on 64GB+ (more headroom for draft model)
 if [[ "$MODEL_CHOICE" == "qwen3.6-27b" ]]; then
     if has_64gb_or_more && [[ "$GPU_OFFLOAD" == "true" ]]; then
@@ -213,6 +224,10 @@ if [[ "$MTP_DRAFT_N_MAX" -gt 2 ]]; then
     log_info "serve_model" "MTP: using aggressive draft (n=${MTP_DRAFT_N_MAX} for 64GB+)"
 fi
 
+if [[ "$CONTEXT_SIZE" -lt 65536 ]]; then
+    log_info "serve_model" "Context capped to ${CONTEXT_SIZE} for ${RAM_GB}GB RAM"
+fi
+
 rotate_log "${LOG_FILE}" 10240
 
 CMD=(llama-server \
@@ -220,17 +235,42 @@ CMD=(llama-server \
     -c "${CONTEXT_SIZE}" \
     --port "${PORT}")
 
-# GPU offloading: put all layers on GPU
+# GPU offloading: 'all' = offload as many layers as memory allows
+# (replaces the old -ngl 999 hack)
 if [[ "$GPU_OFFLOAD" == "true" ]]; then
-    CMD+=(-ngl 999)
+    CMD+=(--gpu-layers all)
 fi
 
-# Threading: auto-detect (maps to performance cores only on Apple Silicon)
+# Threading: -t 0 auto-detects (uses all physical cores — P-cores + E-cores)
+# E-cores help with batch processing and prompt encoding throughput.
 CMD+=(-t 0)
 
-# Memory pinning: prevent swap thrash (critical for large MoE models)
+# MoE expert weights: keep in RAM to free GPU memory for KV cache.
+# On M1 Max 32GB this is essential (~17GB saved); on M4 Max 64GB
+# it still frees substantial GPU memory for context handling.
 if [[ "$GPU_OFFLOAD" == "true" ]]; then
+    # The 35B-A3B has 35B total params but only 3B active per token.
+    # Without --cpu-moe, all expert weights sit idle in GPU memory.
+    if [[ "$MODEL_CHOICE" == "qwen3.6-35b-a3b" ]]; then
+        CMD+=(--cpu-moe)
+    fi
+
+    # Lock model in RAM: prevent macOS from swapping/compressing.
+    # Critical for large models to avoid latency spikes.
     CMD+=(--mlock)
+fi
+
+# High process priority: prevents macOS from deprioritizing this server
+# during background tasks (Xcode indexing, Spotlight, etc.).
+# Reduces token delivery latency spikes.
+CMD+=(--prio 2)
+
+# Poll tuning: balance between CPU usage and token latency.
+# 75 = more responsive (64GB has headroom), 50 = less CPU pressure (32GB).
+if (( RAM_GB >= 64 )); then
+    CMD+=(--poll 75)
+else
+    CMD+=(--poll 50)
 fi
 
 # MTP speculative decoding
