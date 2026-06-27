@@ -9,7 +9,7 @@
 #   ./run/opencode.sh --help               # show usage
 #
 # Environment variables:
-#   MODEL        HuggingFace model ID (default: Qwen3.6-27B)
+#   MODEL        HuggingFace model ID (default: Qwen3.6-35B-A3B)
 #   LLAMA_SCRIPT Path to model server script (default: serve_model.sh)
 #   LLAMA_PORT   llama-server port (default: 8080)
 #   MODEL_CHOICE Model identifier (e.g. qwen3.6-27b)
@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 OPENCODE_CONFIG="${HOME}/.config/opencode/opencode.jsonc"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
-MODEL="${MODEL:-unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M}"
+MODEL="${MODEL:-unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M}"
 LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/serve_model.sh}"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ if [[ "$ACTION_HELP" == "true" ]]; then
     echo "Default (no flags): configure opencode only (llama must be running separately)."
     echo ""
     echo "Environment variables:"
-    echo "  MODEL          HuggingFace model ID (default: unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M)"
+    echo "  MODEL          HuggingFace model ID (default: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M)"
     echo "  LLAMA_SCRIPT   Model server script (default: ./run/serve_model.sh)"
     echo "  LLAMA_PORT     llama-server port (default: 8080)"
     echo "  MODEL_CHOICE   Model identifier (default: qwen3.6-27b)"
@@ -144,13 +144,12 @@ configure_opencode() {
                 "name": "Llama.cpp (local)",
                 "options": {
                     "baseURL": ("http://localhost:" + $port + "/v1"),
-                    "apiKey": "",
-                    "timeout": null
+                    "apiKey": ""
                 },
                 "models": {
-                    $model: {
+                    ($model): {
                         "id": $model,
-                        "name": "Qwen3.6-27B (local)",
+                        "name": "Qwen3.6-35B-A3B (local)",
                         "family": "qwen",
                         "attachment": false,
                         "reasoning": false,
@@ -190,12 +189,11 @@ config["provider"]["llama-local"] = {
     "options": {
         "baseURL": f"http://localhost:{llama_port}/v1",
         "apiKey": "",
-        "timeout": None
     },
     "models": {
         model: {
             "id": model,
-            "name": "Qwen3.6-27B (local)",
+            "name": "Qwen3.6-35B-A3B (local)",
             "family": "qwen",
             "attachment": False,
             "reasoning": False,
