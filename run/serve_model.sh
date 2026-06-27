@@ -23,8 +23,14 @@ source "${SCRIPT_DIR}/lib.sh"
 # ── Model registry (Bash 3.2 compatible — no associative arrays) ──────────
 
 model_default() {
+    local quant="Q4_K_M"
+    # On ≤32GB, the 35B-A3B Q4 weights alone (~20GB) leave almost no
+    # headroom for the OS. Downgrade to Q3 to save ~4-5GB.
+    if (( RAM_GB <= 32 )); then
+        quant="Q3_K_M"
+    fi
     case "$1" in
-        qwen3.6-35b-a3b) echo "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M" ;;
+        qwen3.6-35b-a3b) echo "unsloth/Qwen3.6-35B-A3B-GGUF:${quant}" ;;
         qwen3.6-27b)     echo "unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M" ;;
         *)               echo "" ;;
     esac
@@ -122,6 +128,9 @@ for arg in "$@"; do
     esac
 done
 
+# Detect RAM early so defaults can be hardware-aware
+RAM_GB=$(detect_ram_gb)
+
 # Priority: positional arg > MODEL_CHOICE env var > default (qwen3.6-35b-a3b)
 # Skip over flags to find the model name
 _MODEL_CHOICE=""
@@ -139,7 +148,17 @@ done
 if [[ -n "$_MODEL_CHOICE" ]]; then
     MODEL_CHOICE="$_MODEL_CHOICE"
 else
-    MODEL_CHOICE="${MODEL_CHOICE:-qwen3.6-35b-a3b}"
+    # Auto-downgrade default model on memory-constrained systems.
+    # 35B-A3B Q4 weights alone are ~20GB; on 32GB that leaves almost no
+    # headroom for the OS. Default to 27B instead.
+    if [[ -z "${MODEL_CHOICE:-}" ]]; then
+        if (( RAM_GB >= 48 )); then
+            MODEL_CHOICE="qwen3.6-35b-a3b"
+        else
+            MODEL_CHOICE="qwen3.6-27b"
+            log_info "serve_model" "Auto-selecting 27B model for ${RAM_GB}GB RAM"
+        fi
+    fi
 fi
 
 if [[ -z "$(model_default "$MODEL_CHOICE")" ]]; then
@@ -186,7 +205,6 @@ fi
 
 # ── Determine hardware-aware configuration ─────────────────────────────────
 
-RAM_GB=$(detect_ram_gb)
 GPU_OFFLOAD="true"
 MTP_DRAFT_N_MAX=2
 
@@ -197,12 +215,14 @@ else
 fi
 
 # Adaptive context size based on available RAM
-# KV cache is O(context × model_dim). On 32GB, 65K context can leave
-# barely any headroom for system processes. On 64GB there's plenty.
+# KV cache is O(context × model_dim). On 32GB, 32K context consumes
+# ~4-6GB alone and leaves little room for system processes. Cap to 16K.
 if (( RAM_GB >= 64 )); then
     CONTEXT_SIZE=65536
-else
+elif (( RAM_GB >= 48 )); then
     CONTEXT_SIZE=32768
+else
+    CONTEXT_SIZE=16384
 fi
 
 # MTP model: use more aggressive draft length on 64GB+ (more headroom for draft model)
@@ -256,8 +276,11 @@ if [[ "$GPU_OFFLOAD" == "true" ]]; then
     fi
 
     # Lock model in RAM: prevent macOS from swapping/compressing.
-    # Critical for large models to avoid latency spikes.
-    CMD+=(--mlock)
+    # Only enable on 64GB+; on 32GB let the OS compress/page unused
+    # weights instead of pinning the entire model resident.
+    if (( RAM_GB >= 64 )); then
+        CMD+=(--mlock)
+    fi
 fi
 
 # High process priority: prevents macOS from deprioritizing this server
