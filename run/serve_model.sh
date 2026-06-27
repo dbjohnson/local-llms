@@ -141,12 +141,7 @@ else
   # 35B-A3B Q4 weights alone are ~20GB; on 32GB that leaves almost no
   # headroom for the OS. Default to 27B instead.
   if [[ -z "${MODEL_CHOICE:-}" ]]; then
-    if ((RAM_GB >= 48)); then
-      MODEL_CHOICE="qwen3.6-35b-a3b"
-    else
-      MODEL_CHOICE="qwen3.6-27b"
-      log_info "serve_model" "Auto-selecting 27B model for ${RAM_GB}GB RAM"
-    fi
+    MODEL_CHOICE="qwen3.6-35b-a3b"
   fi
 fi
 
