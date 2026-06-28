@@ -21,15 +21,12 @@ Scripts for running LLMs locally using llama.cpp and other engines.
 ./setup.sh
 
 # For Codex Desktop:
-./run/codex.sh              # start llama-server + proxy + Codex (backgrounds)
+./run/codex.sh              # OpenRouter via proxy (requires OPENROUTER_API_KEY)
+./run/codex.sh --local      # local model via proxy
 ./run/teardown.sh           # stop all services and restore configs
 
-# For opencode:
-./run/opencode.sh --start   # start llama-server + configure opencode
-./run/teardown.sh           # stop services and restore configs
-
-# For DeepSeek-R1-Distill-Qwen-32B:
-MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh
+# For Codex with local DeepSeek-R1-Distill-Qwen-32B:
+MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh --local
 ```
 
 ## Model Selection
@@ -60,23 +57,31 @@ MODEL_CHOICE=deepseek-r1-32b ./run/serve_model.sh
 
 ### Overriding the Model
 
-All orchestration scripts support model selection via environment variables:
-
+**OpenRouter mode (default):**
 ```bash
-# Use 35B-A3B with Codex (default)
+# Use OpenRouter with default 35B-A3B model
 ./run/codex.sh
 
+# Use OpenRouter with custom model
+OPENROUTER_MODEL=openai/gpt-4o ./run/codex.sh
+```
+
+**Local mode:**
+```bash
+# Use 35B-A3B with Codex (default)
+./run/codex.sh --local
+
 # Use 27B with MTP
-MODEL_CHOICE=qwen3.6-27b ./run/codex.sh
+MODEL_CHOICE=qwen3.6-27b ./run/codex.sh --local
 
 # Custom model via MODEL env var
-MODEL=my-org/my-model:Q5_K_M ./run/codex.sh
+MODEL=my-org/my-model:Q5_K_M ./run/codex.sh --local
 
 # Custom model + model choice for serve_model.sh
-MODEL_CHOICE=qwen3.6-27b MODEL=my-org/my-model:Q4_K_M ./run/codex.sh
+MODEL_CHOICE=qwen3.6-27b MODEL=my-org/my-model:Q4_K_M ./run/codex.sh --local
 
 # Use DeepSeek-R1-Distill-Qwen-32B with Codex
-MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh
+MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh --local
 ```
 
 ## Monitoring Logs
@@ -129,15 +134,25 @@ Environment variables:
 
 Orchestrates the full stack for Codex Desktop: starts llama-server → opencodex proxy → configures Codex → launches Codex Desktop.
 
+**Modes:**
+- **Default (OpenRouter):** Uses OpenRouter API via opencodex proxy (requires `OPENROUTER_API_KEY`)
+- **`--local`:** Uses a local llama-server + opencodex proxy
+
+**Flags:**
 - **Default (background):** Starts all services and detaches. Your terminal is free.
 - **`--foreground`:** Blocks in the terminal, waits for Codex to close, then auto-teardowns.
 
 Environment variables:
-- `MODEL` — model ID passed to the catalog and proxy config
-- `LLAMA_SCRIPT` — which server script to execute (default: `./run/serve_model.sh`)
-- `LLAMA_PORT` — llama-server port (default: `8080`)
-- `PROXY_PORT` — opencodex proxy port (default: `8082`)
-- `MODEL_CHOICE` — model identifier for `serve_model.sh`
+- **OpenRouter mode:**
+  - `OPENROUTER_API_KEY` — your OpenRouter API key (required)
+  - `OPENROUTER_MODEL` — model slug (default: `qwen/qwen3.6-35b-a3b`)
+  - `PROXY_PORT` — opencodex proxy port (default: `8082`)
+- **Local mode:**
+  - `MODEL` — HuggingFace model ID (default: `unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M`)
+  - `LLAMA_SCRIPT` — which server script to execute (default: `./run/serve_model.sh`)
+  - `LLAMA_PORT` — llama-server port (default: `8080`)
+  - `PROXY_PORT` — opencodex proxy port (default: `8082`)
+  - `MODEL_CHOICE` — model identifier for `serve_model.sh`
 
 ### `run/opencode.sh`
 
@@ -149,12 +164,12 @@ Configures [opencode](https://github.com/opencode-ai/opencode) to use llama-serv
 - **`--restore`:** Removes the `llama-local` provider from opencode config.
 
 Environment variables:
-- `MODEL` — model ID registered in opencode config
+- `MODEL` — HuggingFace model ID registered in opencode config (default: `unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M`)
 - `LLAMA_SCRIPT` — which server script to start with `--start`/`--foreground`
 - `LLAMA_PORT` — llama-server port (default: `8080`)
-- `MODEL_CHOICE` — model identifier for `serve_model.sh`
+- `MODEL_CHOICE` — model identifier for `serve_model.sh` (default: `qwen3.6-27b`)
 
-> **Note:** When using `--start` or `--foreground`, opencode.sh defaults to `qwen3.6-27b` for the server model.
+> **Note:** When using `--start` or `--foreground`, opencode.sh defaults to `qwen3.6-27b` for the llama-server (`MODEL_CHOICE`).
 > The `MODEL` env var controls the model ID registered in opencode's config and should match the running server.
 
 After running, launch opencode with:
@@ -191,20 +206,27 @@ Environment variables:
 ## Workflows
 
 ```bash
-# Codex Desktop with default 35B-A3B model
+# Codex Desktop with OpenRouter (default 35B-A3B model)
+export OPENROUTER_API_KEY="sk-or-..."
 ./run/teardown.sh && ./run/codex.sh     # fresh start
 ./run/codex.sh                          # start (skips if services are running)
 
-# Codex Desktop with 27B model
-MODEL_CHOICE=qwen3.6-27b ./run/codex.sh
+# Codex Desktop with OpenRouter + custom model
+OPENROUTER_MODEL=openai/gpt-4o ./run/codex.sh
 
-# opencode with default 27B model
-./run/opencode.sh --start
-opencode -m llama-local/unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M
+# Codex Desktop with local 35B-A3B model
+./run/codex.sh --local
 
-# opencode with 35B-A3B model
+# Codex Desktop with local 27B model
+MODEL_CHOICE=qwen3.6-27b ./run/codex.sh --local
+
+# opencode with local model (35B-A3B)
 MODEL_CHOICE=qwen3.6-35b-a3b MODEL=unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M ./run/opencode.sh --start
 opencode -m llama-local/unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M
+
+# opencode with 27B model
+MODEL_CHOICE=qwen3.6-27b MODEL=unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M ./run/opencode.sh --start
+opencode -m llama-local/unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_M
 
 # Clean up
 ./run/teardown.sh && ./run/opencode.sh --restore
@@ -212,10 +234,10 @@ opencode -m llama-local/unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M
 # Check what's running
 ./run/teardown.sh --status
 
-# Codex with DeepSeek-R1-Distill-Qwen-32B
-MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh
+# Codex with local DeepSeek-R1-Distill-Qwen-32B
+MODEL_CHOICE=deepseek-r1-32b ./run/codex.sh --local
 
-# opencode with DeepSeek-R1-Distill-Qwen-32B
+# opencode with local DeepSeek-R1-Distill-Qwen-32B
 MODEL_CHOICE=deepseek-r1-32b MODEL=unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF:Q4_K_M ./run/opencode.sh --start
 opencode -m llama-local/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF:Q4_K_M
 ```

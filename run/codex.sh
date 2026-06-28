@@ -11,7 +11,7 @@
 #
 # Environment variables (OpenRouter mode):
 #   OPENROUTER_API_KEY   Required — your OpenRouter API key
-#   OPENROUTER_MODEL     Model slug (default: meta-llama/llama-3.3-70b-instruct)
+#   OPENROUTER_MODEL     Model slug (default: qwen/qwen3.6-35b-a3b)
 #   PROXY_PORT           opencodex proxy port (default: 8082)
 #
 # Environment variables (Local mode):
@@ -33,7 +33,7 @@ PROXY_PORT="${PROXY_PORT:-8082}"
 MODEL="${MODEL:-unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M}"
 LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/serve_model.sh}"
 CATALOG="${SCRIPT_DIR}/llama-server-models.json"
-OPENROUTER_MODEL="${OPENROUTER_MODEL:-qwen/qwen3.6-27b}"
+OPENROUTER_MODEL="${OPENROUTER_MODEL:-qwen/qwen3.6-35b-a3b}"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ if [[ "$ACTION_HELP" == "true" ]]; then
     echo ""
     echo "Environment variables (OpenRouter mode):"
     echo "  OPENROUTER_API_KEY   Required — your OpenRouter API key"
-    echo "  OPENROUTER_MODEL     Model slug (default: meta-llama/llama-3.3-70b-instruct)"
+    echo "  OPENROUTER_MODEL     Model slug (default: qwen/qwen3.6-35b-a3b)"
     echo "  PROXY_PORT           opencodex proxy port (default: 8082)"
     echo ""
     echo "Environment variables (Local mode):"
