@@ -36,10 +36,10 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-log_info()  { echo -e "${GREEN}[teardown]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[teardown]${NC} $1"; }
+log_info() { echo -e "${GREEN}[teardown]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[teardown]${NC} $1"; }
 log_error() { echo -e "${RED}[teardown]${NC} $1" >&2; }
-log_step()  { echo -e "${CYAN}[teardown]${NC} $1"; }
+log_step() { echo -e "${CYAN}[teardown]${NC} $1"; }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,9 +55,9 @@ find_pid_by_port() {
 get_service_name() {
   local port="$1"
   case "$port" in
-    8080) echo "llama-server" ;;
-    8082) echo "opencodex proxy" ;;
-    *)    echo "unknown" ;;
+  8080) echo "llama-server" ;;
+  8082) echo "opencodex proxy" ;;
+  *) echo "unknown" ;;
   esac
 }
 
@@ -74,9 +74,9 @@ kill_process() {
   kill "$pid" 2>/dev/null || true
 
   local waited=0
-  while kill -0 "$pid" 2>/dev/null && (( waited < 5 )); do
+  while kill -0 "$pid" 2>/dev/null && ((waited < 5)); do
     sleep 1
-    (( waited++ ))
+    ((waited++))
   done
 
   if kill -0 "$pid" 2>/dev/null; then
@@ -248,37 +248,37 @@ ACTION_CONFIG=true
 
 for arg in "$@"; do
   case "$arg" in
-    --status)
-      ACTION_STATUS=true
-      ACTION_STOP=false
-      ACTION_CONFIG=false
-      ;;
-    --no-config)
-      ACTION_CONFIG=false
-      ;;
-    --config)
-      ACTION_STOP=false
-      ACTION_CONFIG=true
-      ;;
-    --help|-h)
-      echo "Usage: ./run/teardown.sh [OPTIONS]"
-      echo ""
-      echo "Stop local LLM services and restore original configurations."
-      echo ""
-      echo "Options:"
-      echo "  --status     Show running services and config backup status"
-      echo "  --no-config  Stop services but leave configs as-is"
-      echo "  --config     Restore configs only (don't stop services)"
-      echo "  --help       Show this help message"
-      echo ""
-      echo "Default (no flags): stop services AND restore configs."
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $arg" >&2
-      echo "Use --help for usage." >&2
-      exit 1
-      ;;
+  --status)
+    ACTION_STATUS=true
+    ACTION_STOP=false
+    ACTION_CONFIG=false
+    ;;
+  --no-config)
+    ACTION_CONFIG=false
+    ;;
+  --config)
+    ACTION_STOP=false
+    ACTION_CONFIG=true
+    ;;
+  --help | -h)
+    echo "Usage: ./run/teardown.sh [OPTIONS]"
+    echo ""
+    echo "Stop local LLM services and restore original configurations."
+    echo ""
+    echo "Options:"
+    echo "  --status     Show running services and config backup status"
+    echo "  --no-config  Stop services but leave configs as-is"
+    echo "  --config     Restore configs only (don't stop services)"
+    echo "  --help       Show this help message"
+    echo ""
+    echo "Default (no flags): stop services AND restore configs."
+    exit 0
+    ;;
+  *)
+    echo "Unknown option: $arg" >&2
+    echo "Use --help for usage." >&2
+    exit 1
+    ;;
   esac
 done
 
@@ -286,7 +286,7 @@ done
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║   Local LLM Tear-Down                                       ║"
+echo "║   Local LLM Tear-Down                                        ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -309,7 +309,7 @@ if [[ "$ACTION_STATUS" == "true" ]]; then
 else
   echo ""
   log_info "╔══════════════════════════════════════════════════════════════╗"
-  log_info "║   Tear-down complete. Run ./run/codex.sh to start again.    ║"
+  log_info "║   Tear-down complete. Run ./run/codex.sh to start again.     ║"
   log_info "╚══════════════════════════════════════════════════════════════╝"
   echo ""
 fi
