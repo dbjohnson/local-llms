@@ -128,11 +128,12 @@ check_disk_space() {
 # ── Catalog generation ──────────────────────────────────────────────────────
 
 # Generates the Codex Desktop model catalog JSON.
-# Usage: generate_catalog <output_path> <model_id> [context_window]
+# Usage: generate_catalog <output_path> <provider_prefix> <model_id> [context_window]
 generate_catalog() {
     local catalog_path="$1"
-    local model="$2"
-    local context_window="${3:-131072}"
+    local provider_prefix="$2"
+    local model="$3"
+    local context_window="${4:-131072}"
     local auto_compact
 
     auto_compact=$(( context_window * 90 / 100 ))
@@ -145,9 +146,9 @@ generate_catalog() {
   "client_version": "26.623.31921",
   "models": [
     {
-      "slug": "llama-local/${model}",
-      "display_name": "llama-local/${model}",
-      "description": "Routed via opencodex → llama-local (llamacpp).",
+      "slug": "${provider_prefix}/${model}",
+      "display_name": "${provider_prefix}/${model}",
+      "description": "Routed via opencodex → ${provider_prefix}.",
       "shell_type": "shell_command",
       "visibility": "list",
       "supported_in_api": true,
