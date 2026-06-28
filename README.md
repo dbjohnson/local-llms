@@ -62,9 +62,32 @@ MODEL_CHOICE=deepseek-r1-32b ./run/serve_model.sh
 # Use OpenRouter with default 35B-A3B model
 ./run/codex.sh
 
-# Use OpenRouter with custom model
-OPENROUTER_MODEL=openai/gpt-4o ./run/codex.sh
+# Use OpenRouter with custom Qwen model
+OPENROUTER_MODEL=qwen/qwen3.6-27b ./run/codex.sh
 ```
+
+Codex will only show these models hosted on OpenRouter:
+
+**DeepSeek:**
+- DeepSeek V4 Flash (1M context, ultra-cheap)
+- DeepSeek V4 Pro (1M context, higher capability)
+- DeepSeek V3.2
+- DeepSeek R1 (reasoning-focused)
+- DeepSeek V3.1
+
+**Z.ai (GLM):**
+- GLM 5.2 (1M context)
+- GLM 5.1
+- GLM 5
+- GLM 4.7
+- GLM 4.7 Flash (ultra-cheap)
+
+**Qwen:**
+- Qwen 3.6 Flash (1M context)
+- Qwen 3.6 Plus (1M context)
+- Qwen 3.6 27B
+- Qwen 3.6 35B-A3B (default)
+- Qwen 3.6 Max Preview
 
 **Local mode:**
 ```bash
@@ -211,8 +234,8 @@ export OPENROUTER_API_KEY="sk-or-..."
 ./run/teardown.sh && ./run/codex.sh     # fresh start
 ./run/codex.sh                          # start (skips if services are running)
 
-# Codex Desktop with OpenRouter + custom model
-OPENROUTER_MODEL=openai/gpt-4o ./run/codex.sh
+# Codex Desktop with OpenRouter + custom Qwen model
+OPENROUTER_MODEL=qwen/qwen3.6-27b ./run/codex.sh
 
 # Codex Desktop with local 35B-A3B model
 ./run/codex.sh --local

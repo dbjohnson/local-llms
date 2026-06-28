@@ -34,6 +34,7 @@ MODEL="${MODEL:-unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M}"
 LLAMA_SCRIPT="${LLAMA_SCRIPT:-${SCRIPT_DIR}/serve_model.sh}"
 CATALOG="${SCRIPT_DIR}/llama-server-models.json"
 OPENROUTER_MODEL="${OPENROUTER_MODEL:-qwen/qwen3.6-35b-a3b}"
+OPENROUTER_CATALOG="${SCRIPT_DIR}/openrouter-models.json"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
 
@@ -218,6 +219,579 @@ OCXCFG_EOF
     log_info "proxy" "Started (PID: ${proxy_pid})"
 }
 
+# ── Generate OpenRouter model catalog (Qwen only) ──────────────────────────
+
+generate_openrouter_catalog() {
+    local catalog_path="$1"
+    mkdir -p "$(dirname "$catalog_path")"
+
+    cat > "${catalog_path}" <<'CATALOG_EOF'
+{
+  "fetched_at": "OPENROUTER_MODELS",
+  "client_version": "26.623.31921",
+  "models": [
+    {
+      "slug": "openrouter/deepseek/deepseek-v4-flash",
+      "display_name": "DeepSeek V4 Flash",
+      "description": "DeepSeek V4 Flash — ultra-cheap, 1M context, great for coding",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 12,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 1048576,
+      "max_context_window": 1048576,
+      "auto_compact_token_limit": 943718,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/deepseek/deepseek-v4-pro",
+      "display_name": "DeepSeek V4 Pro",
+      "description": "DeepSeek V4 Pro — higher capability, 1M context",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 11,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 1048576,
+      "max_context_window": 1048576,
+      "auto_compact_token_limit": 943718,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/deepseek/deepseek-chat-v3.2",
+      "display_name": "DeepSeek V3.2",
+      "description": "DeepSeek V3.2 — strong general-purpose coding model",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 10,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 131072,
+      "max_context_window": 131072,
+      "auto_compact_token_limit": 117964,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/deepseek/deepseek-r1",
+      "display_name": "DeepSeek R1",
+      "description": "DeepSeek R1 — reasoning-focused, chain-of-thought",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 9,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 163840,
+      "max_context_window": 163840,
+      "auto_compact_token_limit": 147456,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/deepseek/deepseek-chat-v3.1",
+      "display_name": "DeepSeek V3.1",
+      "description": "DeepSeek V3.1 — balanced performance, cost-effective",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 8,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 163840,
+      "max_context_window": 163840,
+      "auto_compact_token_limit": 147456,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/z-ai/glm-5.2",
+      "display_name": "GLM 5.2",
+      "description": "GLM 5.2 — Z.ai's flagship, 1M context window",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 14,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 1048576,
+      "max_context_window": 1048576,
+      "auto_compact_token_limit": 943718,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/z-ai/glm-5.1",
+      "display_name": "GLM 5.1",
+      "description": "GLM 5.1 — Z.ai strong reasoning model",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 13,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 202752,
+      "max_context_window": 202752,
+      "auto_compact_token_limit": 182476,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/z-ai/glm-5",
+      "display_name": "GLM 5",
+      "description": "GLM 5 — Z.ai latest generation",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 12,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 202752,
+      "max_context_window": 202752,
+      "auto_compact_token_limit": 182476,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/z-ai/glm-4.7",
+      "display_name": "GLM 4.7",
+      "description": "GLM 4.7 — Z.ai balanced performance",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 11,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 202752,
+      "max_context_window": 202752,
+      "auto_compact_token_limit": 182476,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/z-ai/glm-4.7-flash",
+      "display_name": "GLM 4.7 Flash",
+      "description": "GLM 4.7 Flash — fast, ultra-cheap Z.ai model",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 10,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 202752,
+      "max_context_window": 202752,
+      "auto_compact_token_limit": 182476,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/qwen/qwen3.6-flash",
+      "display_name": "Qwen 3.6 Flash",
+      "description": "Qwen 3.6 Flash — fast, efficient coding assistant",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 9,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 1000000,
+      "max_context_window": 1000000,
+      "auto_compact_token_limit": 900000,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/qwen/qwen3.6-plus",
+      "display_name": "Qwen 3.6 Plus",
+      "description": "Qwen 3.6 Plus — high-capacity with 1M context window",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 8,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 1000000,
+      "max_context_window": 1000000,
+      "auto_compact_token_limit": 900000,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/qwen/qwen3.6-27b",
+      "display_name": "Qwen 3.6 27B",
+      "description": "Qwen 3.6 27B — balanced performance for coding tasks",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 7,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 262144,
+      "max_context_window": 262144,
+      "auto_compact_token_limit": 235929,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/qwen/qwen3.6-35b-a3b",
+      "display_name": "Qwen 3.6 35B-A3B",
+      "description": "Qwen 3.6 35B-A3B — MoE model, agentic coding, tool use",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 6,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 262144,
+      "max_context_window": 262144,
+      "auto_compact_token_limit": 235929,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    },
+    {
+      "slug": "openrouter/qwen/qwen3.6-max-preview",
+      "display_name": "Qwen 3.6 Max Preview",
+      "description": "Qwen 3.6 Max Preview — largest Qwen model, maximum capability",
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 5,
+      "base_instructions": "You are a helpful coding assistant.",
+      "web_search_tool_type": "text_and_image",
+      "supports_search_tool": true,
+      "supported_reasoning_levels": [
+        {"effort": "low", "description": "Fast responses"},
+        {"effort": "medium", "description": "Balanced"},
+        {"effort": "high", "description": "Deep reasoning"},
+        {"effort": "xhigh", "description": "Maximum reasoning"}
+      ],
+      "default_reasoning_level": "medium",
+      "context_window": 262144,
+      "max_context_window": 262144,
+      "auto_compact_token_limit": 235929,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": true,
+      "supports_image_detail_original": false,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "effective_context_window_percent": 95,
+      "comp_hash": "openrouter"
+    }
+  ]
+}
+CATALOG_EOF
+
+    log_info "config" "Wrote ${catalog_path} with 15 models (DeepSeek, Z.ai, Qwen)"
+}
+
 # ── Configure Codex for OpenRouter (via proxy) ─────────────────────────────
 
 configure_codex_openrouter() {
@@ -225,9 +799,13 @@ configure_codex_openrouter() {
 
     backup_config "${CODEX_CONFIG}" "config"
 
+    log_info "config" "Writing OpenRouter model catalog..."
+    generate_openrouter_catalog "${OPENROUTER_CATALOG}"
+
     cat > "${CODEX_CONFIG}" <<CODEXCFG_EOF
 model = "openrouter/${OPENROUTER_MODEL}"
 model_provider = "opencodex"
+model_catalog_json = "${OPENROUTER_CATALOG}"
 
 notify = ["${HOME}/.codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
 
@@ -240,11 +818,6 @@ requires_openai_auth = true
 [features]
 js_repl = false
 CODEXCFG_EOF
-
-    log_info "config" "Syncing OpenRouter models via opencodex..."
-    if ! ocx sync 2>&1; then
-        log_warn "config" "ocx sync failed, models may not appear in Codex UI"
-    fi
 
     if [[ -f "${HOME}/.codex/models_cache.json" ]]; then
         rm -f "${HOME}/.codex/models_cache.json"
